@@ -96,7 +96,6 @@ file(APPEND ${VERSION_FILE} "#endif\n")
 if (NOT EXISTS ${CCI_COPYING})
 	if (UNIX)
       execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule deinit -f ${CCI_SOURCE}
         COMMAND ${GIT_EXECUTABLE} submodule update --init
         RESULT_VARIABLE git_result)
         if (git_result)
@@ -163,7 +162,8 @@ ADD_COMPILE_OPTIONS(-m64 -Wall)
 
 INCLUDE_DIRECTORIES(${CCI_SOURCE}/src/cci ${LIBUNIXODBC_INCLUDES})
 
-add_definitions(-DGCC -DLINUX -DCUBRID_ODBC_UNICODE)
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE -DGCC -DLINUX)
+target_compile_definitions(${CUBRID_ODBC_UNICODE} PRIVATE -DGCC -DLINUX -DCUBRID_ODBC_UNICODE)
 
 LINK_DIRECTORIES(${CCI_LIBDIR})
 ADD_LIBRARY(${CMAKE_PROJECT_NAME} SHARED ${CUBRID_ODBC_SOURCES})
