@@ -1405,5 +1405,12 @@ namespace UnitTestCPP
 			retcode = SQLFreeHandle(SQL_HANDLE_DBC, hDbc);
 			retcode = SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
 		}
+  
+TEST_METHOD (test_test)
+{
+ SQLHENV         hEnv;
+ SQLHDBC         hDbc;
+ SQLHSTMT        hStmt;  
+}
 	};
 }
