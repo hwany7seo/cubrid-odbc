@@ -155,7 +155,7 @@ namespace UnitTestCPP
 			retcode = SQLSetStmtAttr(hStmt, SQL_ATTR_PARAM_STATUS_PTR, ParamStatusArray, ARRAY_SIZE);
 			retcode = SQLSetStmtAttr(hStmt, SQL_ATTR_PARAMS_PROCESSED_PTR, &ParamsProcessed, 0);
 
-			wchar_t address[ARRAY_SIZE][STR_SZ] = { L"ÇÑab", L"ab", L"123", L"6234", L"9", L"db", L"Abc", L"Bbcd" };
+			wchar_t address[ARRAY_SIZE][STR_SZ] = { L"í•œab", L"ab", L"123", L"6234", L"9", L"db", L"Abc", L"Bbcd" };
 
 			BYTE* pBufData = (BYTE*)new wchar_t[MAXLEN * ARRAY_SIZE];
 			BYTE *ppBuf = pBufData;
@@ -175,7 +175,7 @@ namespace UnitTestCPP
 			ppBuf = pBufData;
 			for (int i = 0; i < ARRAY_SIZE; i++)	// insert additional rows
 			{
-				swprintf(address[i], L"1-Å¥ºê %d", i);
+				swprintf(address[i], L"1-íë¸Œ %d", i);
 				memcpy(ppBuf, address[i], STR_SZ * sizeof(wchar_t));
 				ppBuf = ppBuf + nMaxLen;
 			}
@@ -185,7 +185,7 @@ namespace UnitTestCPP
 			ppBuf = pBufData;
 			for (int i = 0; i < ARRAY_SIZE; i++)	// insert additional rows
 			{
-				swprintf(address[i], L"2-¸®µå %d", i);
+				swprintf(address[i], L"2-ë¦¬ë“œ %d", i);
 				memcpy(ppBuf, address[i], STR_SZ * sizeof(wchar_t));
 				ppBuf = ppBuf + nMaxLen;
 			}
@@ -987,13 +987,13 @@ namespace UnitTestCPP
 			retcode = SQLAllocHandle(SQL_HANDLE_STMT, dbc, &hStmt);
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
 
-			retcode = SQLExecDirect(hStmt, L"DROP TABLE IF EXISTS [Å×ÀÌºí] ", SQL_NTS);
+			retcode = SQLExecDirect(hStmt, L"DROP TABLE IF EXISTS [í…Œì´ë¸”] ", SQL_NTS);
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
-			retcode = SQLExecDirect(hStmt, L"CREATE TABLE [Å×ÀÌºí] ([ÀÌ¸§] varchar(16), [³ªÀÌ] integer)", SQL_NTS);
+			retcode = SQLExecDirect(hStmt, L"CREATE TABLE [í…Œì´ë¸”] ([ì´ë¦„] varchar(16), [ë‚˜ì´] integer)", SQL_NTS);
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
-			retcode = SQLExecDirect(hStmt, L"INSERT INTO [Å×ÀÌºí] VALUES ('È«±æµ¿', 25)", SQL_NTS);
+			retcode = SQLExecDirect(hStmt, L"INSERT INTO [í…Œì´ë¸”] VALUES ('í™ê¸¸ë™', 25)", SQL_NTS);
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
-			retcode = SQLExecDirect(hStmt, L"SELECT [ÀÌ¸§], [³ªÀÌ] FROM [Å×ÀÌºí] WHERE [³ªÀÌ] > 19", SQL_NTS);
+			retcode = SQLExecDirect(hStmt, L"SELECT [ì´ë¦„], [ë‚˜ì´] FROM [í…Œì´ë¸”] WHERE [ë‚˜ì´] > 19", SQL_NTS);
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
 
 			retcode = SQLFetch(hStmt);
@@ -1012,8 +1012,8 @@ namespace UnitTestCPP
 			Assert::AreNotEqual((int)retcode, SQL_ERROR);
 
 			if (strlen((const char *)query_plan) > 0) {
-				wchar_t expected_window[198] = L"Join graph segments (f indicates final):\r\nseg[0]: [0]\r\nseg[1]: ÀÌ¸§[0] (f)\r\nseg[2]: ³ªÀÌ[0] (f)\r\nJoin graph nodes:\r\nnode[0]: Å×ÀÌºí Å×ÀÌºí(1/1) (sargs 0) (loc 0)\r\nJoin graph terms:\r\nterm[0]: [Å×ÀÌºí].[³ªÀÌ] range";
-				wchar_t expected_linux[198] = L"Join graph segments (f indicates final):\nseg[0]: [0]\nseg[1]: ÀÌ¸§[0] (f)\nseg[2]: ³ªÀÌ[0] (f)\nJoin graph nodes:\nnode[0]: Å×ÀÌºí Å×ÀÌºí(1/1) (sargs 0) (loc 0)\nJoin graph terms:\nterm[0]: [Å×ÀÌºí].[³ªÀÌ] range";
+				wchar_t expected_window[198] = L"Join graph segments (f indicates final):\r\nseg[0]: [0]\r\nseg[1]: ì´ë¦„[0] (f)\r\nseg[2]: ë‚˜ì´[0] (f)\r\nJoin graph nodes:\r\nnode[0]: í…Œì´ë¸” í…Œì´ë¸”(1/1) (sargs 0) (loc 0)\r\nJoin graph terms:\r\nterm[0]: [í…Œì´ë¸”].[ë‚˜ì´] range";
+				wchar_t expected_linux[198] = L"Join graph segments (f indicates final):\nseg[0]: [0]\nseg[1]: ì´ë¦„[0] (f)\nseg[2]: ë‚˜ì´[0] (f)\nJoin graph nodes:\nnode[0]: í…Œì´ë¸” í…Œì´ë¸”(1/1) (sargs 0) (loc 0)\nJoin graph terms:\nterm[0]: [í…Œì´ë¸”].[ë‚˜ì´] range";
 				
 				//for windows
 				int c = wcsncmp(query_plan, expected_window, wcslen(expected_window));
@@ -1026,7 +1026,7 @@ namespace UnitTestCPP
 					std::wstring ws(wc);
 
 					//for under version to 9.2.x
-					if (((int)ws.find(L"Å×ÀÌºí")) > 0 && ((int)ws.find(L"ÀÌ¸§")) > 0 && ((int)ws.find(L"³ªÀÌ")) > 0){
+					if (((int)ws.find(L"í…Œì´ë¸”")) > 0 && ((int)ws.find(L"ì´ë¦„")) > 0 && ((int)ws.find(L"ë‚˜ì´")) > 0){
 						c = 0;
 					}
 				}
