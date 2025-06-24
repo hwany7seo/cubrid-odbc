@@ -493,3 +493,10 @@ TestConnection (HWND hwndParent, CUBRIDDSNItem *ptDSNItem)
   SQLFreeHandle (SQL_HANDLE_ENV, hEnv);
 
 }
+
+PRIVATE VOID SQL_API
+TestConnectioaaaaaa () {
+
+int32 bbbbb;
+
+}
