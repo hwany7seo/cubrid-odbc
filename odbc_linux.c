@@ -46,7 +46,7 @@ PUBLIC INT_PTR CALLBACK ConfigDSNDlgProc (HWND hwndParent, UINT message, WPARAM 
  */
 
 ODBC_INTERFACE RETCODE SQL_API
-SQLDataSources (SQLHENV EnvironmentHandle,
+SQLDataSourcesA (SQLHENV EnvironmentHandle,
 		SQLUSMALLINT Direction,
 		SQLCHAR *ServerName,
 		SQLSMALLINT BufferLength1,
@@ -78,7 +78,7 @@ SQLSetConfigMode (UWORD mode)
 }
 
 int INSTAPI
-SQLGetPrivateProfileString (LPCSTR lpszSection,
+SQLGetPrivateProfileStringA (LPCSTR lpszSection,
 			    LPCSTR lpszEntry,
 			    LPCSTR lpszDefault, LPSTR lpszRetBuffer, int cbRetBuffer, LPCSTR lpszFilename)
 {
@@ -121,7 +121,7 @@ SQLGetPrivateProfileString (LPCSTR lpszSection,
  * Version Introduced: ODBC 1.0 Standards Compliance: Deprecated
  */
 SQLRETURN SQL_API
-SQLSetConnectOption (SQLHDBC ConnectionHandle, SQLUSMALLINT Option, SQLULEN Value)
+SQLSetConnectOptionA (SQLHDBC ConnectionHandle, SQLUSMALLINT Option, SQLULEN Value)
 {
   return SQL_ERROR;
 }
