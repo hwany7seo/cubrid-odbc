@@ -167,6 +167,7 @@ SysFreeString (WCHAR *bstr)
 void
 OutputDebugString (const char *str, ...)
 {
+  printf("%s", str);
   return;
 }
 
