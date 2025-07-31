@@ -1404,7 +1404,10 @@ odbc_execute (ODBC_STATEMENT *stmt)
                         desc_info.type == SQL_WLONGVARCHAR))
                   {
                       desc_info.length = *octet_len_ptr;
+                      printf("octet_len_ptr: %d\n", *octet_len_ptr);
                   }
+                  printf("desc_info.length: %d\n", desc_info.length);
+                  printf("desc_info.type: %d\n", desc_info.type);
 	    }
 	  else
 	    {
