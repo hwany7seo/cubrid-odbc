@@ -1399,7 +1399,12 @@ odbc_execute (ODBC_STATEMENT *stmt)
 
 	  if (octet_len_ptr)
 	    {
-	      desc_info.length = *octet_len_ptr;
+                if (!(desc_info.type == SQL_C_WCHAR ||
+                        desc_info.type == SQL_WVARCHAR ||
+                        desc_info.type == SQL_WLONGVARCHAR))
+                  {
+                      desc_info.length = *octet_len_ptr;
+                  }
 	    }
 	  else
 	    {
