@@ -49,12 +49,12 @@ mkdir %INSTALL_DIRS%
 
 devenv cubrid_odbc_14.sln /rebuild "Release|Win32"
 devenv cubrid_odbc_14.sln /rebuild "Release|x64"
-devenv cubrid_odbc_14.sln /rebuild "Debug|Win32"
-devenv cubrid_odbc_14.sln /rebuild "Debug|x64"
+@REM devenv cubrid_odbc_14.sln /rebuild "Debug|Win32"
+@REM devenv cubrid_odbc_14.sln /rebuild "Debug|x64"
  
-copy build\Win32_Debug\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc32_d.dll
+@REM copy build\Win32_Debug\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc32_d.dll
 copy build\Win32_Release\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc32.dll
-copy build\x64_Debug\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc64_d.dll
+@REM copy build\x64_Debug\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc64_d.dll
 copy build\x64_Release\cubrid_odbc.dll  %INSTALL_DIRS%\cubrid_odbc64.dll
 
 copy installer\installer.nsi %INSTALL_DIRS%\installer.nsi
