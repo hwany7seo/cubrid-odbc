@@ -523,6 +523,7 @@ odbc_get_desc_field (ODBC_DESC *desc,
 	case SQL_DESC_CONCISE_TYPE:
 	  if (value_ptr != NULL)
 	    {
+	      fprintf(stderr, "record->concise_type: %d\n", record->concise_type);
 	      if (record->concise_type == SQL_BLOB)
 		{
 		  * (short *) value_ptr = SQL_LONGVARBINARY;
@@ -1419,7 +1420,7 @@ odbc_set_ird (ODBC_STATEMENT *stmt,
   display_size = odbc_display_size (type, precision);
   octet_length = odbc_octet_length (type, precision);
 
-  if (IS_STRING_TYPE (type) || IS_BINARY_TYPE (type))
+  if (IS_STRING_TYPE (type))
     {
 #ifdef CUBRID_ODBC_UNICODE
       if ((_stricmp (stmt->conn->charset, "utf-8") == 0) || (_stricmp (stmt->conn->charset, "euc-kr") == 0))
