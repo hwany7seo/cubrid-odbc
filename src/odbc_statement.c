@@ -104,9 +104,87 @@ PRIVATE RETCODE odbc_set_pos_update (ODBC_STATEMENT *stmt,
 PRIVATE RETCODE odbc_set_pos_delete (ODBC_STATEMENT *stmt, DescInfo *boomark_desc_info_ptr, SQLSETPOSIROW row_pos);
 PRIVATE void free_param_array (ParamArray *param_ptr, int array_count, int member_count);
 PRIVATE short default_type_to_c_type (short value_type, short parameter_type);
+PRIVATE void free_bound_lobs (ODBC_STATEMENT *stmt);
 #ifdef _DEBUG
 PRIVATE void debug_print_appl_desc (DescInfo *desc_info, void *value_ptr, long *ind_ptr);
 #endif
+
+PRIVATE void
+free_bound_lobs (ODBC_STATEMENT *stmt)
+{
+  while (stmt->lob_list)
+    {
+      LOB_DATA *node = stmt->lob_list;
+      stmt->lob_list = node->next;
+      cci_blob_free ((T_CCI_BLOB) node->lob);
+      UT_FREE (node);
+    }
+}
+
+PRIVATE int
+bind_param_with_lob_support (ODBC_STATEMENT *stmt, int req_hd, int param_pos, T_CCI_A_TYPE a_type, void *cci_value, T_CCI_U_TYPE u_type)
+{
+  T_CCI_ERROR err_buf;
+  void *lob = NULL;
+  int cci_rc;
+
+  if ((u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB) && cci_value != NULL)
+    {
+      if (u_type == CCI_U_TYPE_BLOB && a_type == CCI_A_TYPE_BIT)
+        {
+          T_CCI_BLOB blob = NULL;
+          T_CCI_BIT *bit_val = (T_CCI_BIT *) cci_value;
+          cci_rc = cci_blob_new (stmt->conn->connhd, &blob, &err_buf);
+          if (cci_rc >= 0)
+            {
+              cci_rc = cci_blob_write (stmt->conn->connhd, blob, 0, bit_val->size, bit_val->buf, &err_buf);
+              if (cci_rc >= 0)
+                {
+                  lob = blob;
+                  a_type = CCI_A_TYPE_BLOB;
+                }
+              else
+                {
+                  cci_blob_free (blob);
+                }
+            }
+        }
+      else if (u_type == CCI_U_TYPE_CLOB && a_type == CCI_A_TYPE_STR)
+        {
+          T_CCI_CLOB clob = NULL;
+          cci_rc = cci_clob_new (stmt->conn->connhd, &clob, &err_buf);
+          if (cci_rc >= 0)
+            {
+              cci_rc = cci_clob_write (stmt->conn->connhd, clob, 0, strlen((char*)cci_value), (char*)cci_value, &err_buf);
+              if (cci_rc >= 0)
+                {
+                  lob = clob;
+                  a_type = CCI_A_TYPE_CLOB;
+                }
+              else
+                {
+                  cci_clob_free (clob);
+                }
+            }
+        }
+
+      if (lob)
+        {
+          LOB_DATA *node = (LOB_DATA *) UT_ALLOC (sizeof (LOB_DATA));
+          node->lob = lob;
+          node->next = stmt->lob_list;
+          stmt->lob_list = node;
+
+          cci_value = lob;
+        }
+      else if (cci_rc < 0)
+        {
+          return cci_rc;
+        }
+    }
+
+  return cci_bind_param (req_hd, param_pos, a_type, cci_value, u_type, 0);
+}
 
 /************************************************************************
 * name: odbc_alloc_statement
@@ -162,6 +240,7 @@ odbc_alloc_statement (ODBC_CONNECTION *conn, ODBC_STATEMENT **stmt_ptr)
   s->catalog_result.current = NULL;
 
   free_column_data (&s->column_data, INIT);
+  s->lob_list = NULL;
 
   odbc_alloc_desc (NULL, & (s->i_apd));
   odbc_alloc_desc (NULL, & (s->i_ard));
@@ -316,6 +395,8 @@ odbc_free_statement (ODBC_STATEMENT *stmt)
   stmt->ard = NULL;
   stmt->ird = NULL;
   stmt->ipd = NULL;
+
+  free_bound_lobs (stmt);
 
   UT_FREE (stmt);
 
@@ -1361,13 +1442,17 @@ odbc_execute (ODBC_STATEMENT *stmt)
   long *ind_ptr;
   long *octet_len_ptr;
 
+  T_CCI_PARAM_INFO *param_info = NULL;
+  int num_param = 0;
 
+  free_bound_lobs (stmt);
 
   // Init
   reset_result_set (stmt);
 
   stmt->result_type = QUERY;
 
+  cci_get_param_info (stmt->stmthd, &param_info, &cci_err_buf);
 
   odbc_get_desc_field (stmt->apd, 0, SQL_DESC_COUNT, &count, 0, NULL);
   valid_param_count = MIN (stmt->param_number, count);
@@ -1389,7 +1474,24 @@ odbc_execute (ODBC_STATEMENT *stmt)
 	  get_appl_desc_info (stmt->apd, i, &desc_info);
 
 	  /* IPD Record */
-	  odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+	  // odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+      {
+        ODBC_RECORD *record = find_record_from_desc (stmt->ipd, i);
+        if (record) {
+            sql_type = record->concise_type;
+        } else {
+            odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+        }
+      }
+
+      if (param_info && i <= num_param) {
+          int target_type = CCI_GET_PARAM_INFO_TYPE(param_info, i);
+          if (target_type == CCI_U_TYPE_BLOB) {
+              sql_type = SQL_BLOB;
+          } else if (target_type == CCI_U_TYPE_CLOB) {
+              sql_type = SQL_CLOB;
+          }
+      }
 
 	  a_type = odbc_type_to_cci_a_type (desc_info.type);
 	  u_type = odbc_type_to_cci_u_type (sql_type);
@@ -1441,7 +1543,7 @@ odbc_execute (ODBC_STATEMENT *stmt)
 		    }
 		}
 
-	      cci_rc = cci_bind_param (stmt->stmthd, RevisedParamPos, a_type, cci_value, u_type, 0);
+	      cci_rc = bind_param_with_lob_support (stmt, stmt->stmthd, RevisedParamPos, a_type, cci_value, u_type);
 	      ERROR_GOTO (cci_rc, cci_error);
 
 	      NA_FREE (cci_value);
@@ -1529,7 +1631,24 @@ odbc_execute (ODBC_STATEMENT *stmt)
 	  get_appl_desc_info (stmt->apd, i, &desc_info);
 
 	  /* IPD Record */
-	  odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+	  // odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+      {
+        ODBC_RECORD *record = find_record_from_desc (stmt->ipd, i);
+        if (record) {
+            sql_type = record->concise_type;
+        } else {
+            odbc_get_desc_field (stmt->ipd, i, SQL_DESC_CONCISE_TYPE, &sql_type, 0, NULL);
+        }
+      }
+
+      if (param_info && i <= num_param) {
+          int target_type = CCI_GET_PARAM_INFO_TYPE(param_info, i);
+          if (target_type == CCI_U_TYPE_BLOB) {
+              sql_type = SQL_BLOB;
+          } else if (target_type == CCI_U_TYPE_CLOB) {
+              sql_type = SQL_CLOB;
+          }
+      }
 
 	  a_type = odbc_type_to_cci_a_type (desc_info.type);
 	  u_type = odbc_type_to_cci_u_type (sql_type);
@@ -1631,21 +1750,24 @@ odbc_execute (ODBC_STATEMENT *stmt)
 
       if (stmt->tpl_number == 0 && (stmt->stmt_type == CUBRID_STMT_UPDATE || stmt->stmt_type == CUBRID_STMT_DELETE))
 	{
-	  if (stmt->conn->env->attr_odbc_version == SQL_OV_ODBC2)
-	    {
-	      return ODBC_SUCCESS;	// for 2.x backward compatibility
+	      if (stmt->conn->env->attr_odbc_version == SQL_OV_ODBC2)
+		{
+          if (param_info) { cci_param_info_free(param_info); }
+		  return ODBC_SUCCESS;	// for 2.x backward compatibility
+		}
+	      else
+		{
+          if (param_info) { cci_param_info_free(param_info); }
+		  return ODBC_NO_DATA;
+		}
 	    }
-	  else
-	    {
-	      return ODBC_NO_DATA;
-	    }
-	}
 
 
     }
 
   if (flag_stmt_need_data != 0)
     {
+      if (param_info) { cci_param_info_free(param_info); }
       return ODBC_NEED_DATA;
     }
 
@@ -1654,6 +1776,7 @@ odbc_execute (ODBC_STATEMENT *stmt)
       odbc_auto_commit (stmt->conn);
     }
 
+  if (param_info) { cci_param_info_free(param_info); }
   return ODBC_SUCCESS;
 
 cci_error:
@@ -1663,6 +1786,7 @@ cci_error:
     }
 error:
   NA_FREE (cci_value);
+  if (param_info) { cci_param_info_free(param_info); }
   return ODBC_ERROR;
 }
 
@@ -1691,6 +1815,8 @@ odbc_param_data (ODBC_STATEMENT *stmt, void **valueptr_ptr)
   char flag_cci_exec = 0;
   DescInfo desc_info;
   int RevisedParamPos;
+  T_CCI_PARAM_INFO *param_info = NULL;
+  int num_param = 0;
 
   if (valueptr_ptr == NULL)
     {
@@ -1699,6 +1825,8 @@ odbc_param_data (ODBC_STATEMENT *stmt, void **valueptr_ptr)
     }
 
   // odbc_execute의 putting param data 과정과 같다.
+  cci_get_param_info (stmt->stmthd, &param_info, &cci_err_buf);
+
   if (stmt->param_data.index != 0)
     {
       i = stmt->param_data.index;
@@ -2137,7 +2265,7 @@ delete_error:
 			}
 		    }
 
-		  cci_rc = cci_bind_param (addhd, j, a_type, cci_value, u_type, 0);
+		  cci_rc = bind_param_with_lob_support (stmt, addhd, j, a_type, cci_value, u_type);
 		  ERROR_GOTO (cci_rc, add_error);
 
 		  NA_FREE (cci_value);

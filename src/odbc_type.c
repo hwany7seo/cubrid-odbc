@@ -1069,6 +1069,10 @@ odbc_type_to_cci_u_type (short sql_type)
     case SQL_TYPE_TIMESTAMP:
     case SQL_TIMESTAMP:	// for 2.x backward compatibility
       return CCI_U_TYPE_DATETIME;
+    case SQL_BLOB:
+      return CCI_U_TYPE_BLOB;
+    case SQL_CLOB:
+      return CCI_U_TYPE_CLOB;
     default:
       return CCI_U_TYPE_UNKNOWN;
     }

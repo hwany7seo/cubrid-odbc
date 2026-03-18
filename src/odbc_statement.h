@@ -117,6 +117,12 @@ typedef struct tagREVISED_SQL
   short oid_param_num;
 } REVISED_SQL;
 
+typedef struct tagLOB_DATA
+{
+  void *lob;
+  struct tagLOB_DATA *next;
+} LOB_DATA;
+
 typedef struct st_odbc_statement
 {
   unsigned short handle_type;
@@ -128,6 +134,7 @@ typedef struct st_odbc_statement
   int stmthd;     /* internal handle for CAS */
   CATALOG_RESULT catalog_result;
   struct tagCOLUMN_DATA column_data;
+  LOB_DATA *lob_list;
 
   RESULT_TYPE result_type;  /* if NULL_RESULT, no result set. */
   char *sql_text;   /* origianl SQL statement */

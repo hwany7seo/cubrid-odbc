@@ -1252,6 +1252,8 @@ odbc_set_desc_field (ODBC_DESC *desc,
 	    case SQL_TYPE_TIMESTAMP:
 	    case SQL_C_UNI_OBJECT:
 	    case SQL_C_UNI_SET:
+	    case SQL_BLOB:
+	    case SQL_CLOB:
 	      record->type = (short) value_ptr;
 	      break;
 
