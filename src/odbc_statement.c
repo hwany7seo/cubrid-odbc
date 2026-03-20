@@ -1232,6 +1232,209 @@ odbc_num_params (ODBC_STATEMENT *stmt, short *parameter_count)
 }
 
 /************************************************************************
+* name: odbc_describe_param
+* arguments:
+* returns/side-effects:
+* description:
+*   CAS PARAMETER_INFO를 cci_get_param_info로 받아 SQLDescribeParam에 맞게 채운다.
+* NOTE:
+*   CAS/브로커가 기능을 지원하지 않거나 실패하면 기존 스텁과 같이 VARCHAR(255)로 폴백한다.
+************************************************************************/
+PUBLIC RETCODE
+odbc_describe_param (ODBC_STATEMENT *stmt, SQLUSMALLINT parameter_number,
+		     SQLSMALLINT *data_type_ptr, SQLULEN *parameter_size_ptr,
+		     SQLSMALLINT *decimal_digits_ptr, SQLSMALLINT *nullable_ptr)
+{
+  T_CCI_PARAM_INFO *pinfo = NULL;
+  T_CCI_ERROR cci_err_buf;
+  int cci_rc;
+  int cci_slot;
+  int num_param;
+  T_CCI_U_EXT_TYPE ext_type;
+  T_CCI_U_TYPE cci_u_type;
+  int precision;
+  short scale;
+  short sql_type;
+  SQLULEN col_size;
+  short dec_digits;
+  int use_fallback = 0;
+
+  if (stmt->stmthd <= 0)
+    {
+      odbc_set_diag (stmt->diag, "HY010", 0, NULL);
+      return ODBC_ERROR;
+    }
+
+  if (parameter_number < 1 || parameter_number > stmt->param_number)
+    {
+      odbc_set_diag (stmt->diag, "HY093", 0, NULL);
+      return ODBC_ERROR;
+    }
+
+  cci_slot = revised_param_pos (stmt->revised_sql.org_param_pos, parameter_number);
+  if (cci_slot < 1)
+    {
+      odbc_set_diag (stmt->diag, "HY093", 0, NULL);
+      return ODBC_ERROR;
+    }
+
+  cci_rc = cci_get_param_info (stmt->stmthd, &pinfo, &cci_err_buf);
+  num_param = cci_rc;
+
+  if (cci_rc < 0 || pinfo == NULL || cci_slot > num_param)
+    {
+      use_fallback = 1;
+      if (pinfo != NULL)
+	{
+	  cci_param_info_free (pinfo);
+	  pinfo = NULL;
+	}
+    }
+
+  if (use_fallback)
+    {
+      if (data_type_ptr)
+	{
+	  *data_type_ptr = SQL_VARCHAR;
+	}
+      if (parameter_size_ptr)
+	{
+	  *parameter_size_ptr = 255;
+	}
+      if (decimal_digits_ptr)
+	{
+	  *decimal_digits_ptr = 0;
+	}
+      if (nullable_ptr)
+	{
+	  *nullable_ptr = SQL_NULLABLE_UNKNOWN;
+	}
+      return ODBC_SUCCESS;
+    }
+
+  ext_type = (T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (pinfo, cci_slot);
+  precision = CCI_GET_PARAM_INFO_PRECISION (pinfo, cci_slot);
+  scale = CCI_GET_PARAM_INFO_SCALE (pinfo, cci_slot);
+
+  if ((T_CCI_U_TYPE) ext_type == CCI_U_TYPE_OBJECT)
+    {
+      cci_u_type = CCI_U_TYPE_CHAR;
+      precision = 32;
+      scale = 0;
+    }
+  else if (CCI_IS_COLLECTION_TYPE (ext_type))
+    {
+      cci_u_type = CCI_U_TYPE_STRING;
+      precision = MAX_CUBRID_CHAR_LEN;
+      scale = 0;
+    }
+  else
+    {
+      cci_u_type = (T_CCI_U_TYPE) ext_type;
+      if (precision < 0)
+	{
+	  precision = DEFAULT_COL_PRECISION;
+	}
+      if ((cci_u_type == CCI_U_TYPE_STRING || cci_u_type == CCI_U_TYPE_CHAR) && stmt->conn != NULL)
+	{
+	  if (precision >= stmt->conn->max_string_length)
+	    {
+	      precision = stmt->conn->max_string_length;
+	    }
+	}
+    }
+
+  sql_type = odbc_type_by_cci (cci_u_type, precision);
+  if (sql_type < 0)
+    {
+      sql_type = SQL_VARCHAR;
+      precision = 255;
+      scale = 0;
+    }
+
+  cci_param_info_free (pinfo);
+
+  col_size = (SQLULEN) precision;
+  dec_digits = scale;
+
+  switch (sql_type)
+    {
+    case SQL_TINYINT:
+      col_size = 3;
+      dec_digits = 0;
+      break;
+    case SQL_SMALLINT:
+      col_size = 5;
+      dec_digits = 0;
+      break;
+    case SQL_INTEGER:
+      col_size = 10;
+      dec_digits = 0;
+      break;
+    case SQL_BIGINT:
+      col_size = 19;
+      dec_digits = 0;
+      break;
+    case SQL_REAL:
+      col_size = 7;
+      dec_digits = 0;
+      break;
+    case SQL_FLOAT:
+    case SQL_DOUBLE:
+      col_size = 15;
+      dec_digits = 0;
+      break;
+    case SQL_TYPE_DATE:
+    case SQL_DATE:
+      col_size = 10;
+      dec_digits = 0;
+      break;
+    case SQL_TYPE_TIME:
+    case SQL_TIME:
+      col_size = 8;
+      dec_digits = 0;
+      break;
+    case SQL_TYPE_TIMESTAMP:
+    case SQL_TIMESTAMP:
+      if (col_size <= 0 || col_size > 100)
+	{
+	  col_size = 26;
+	}
+      break;
+    case SQL_CHAR:
+    case SQL_VARCHAR:
+    case SQL_LONGVARCHAR:
+      if (col_size == 0)
+	{
+	  col_size = 255;
+	}
+      dec_digits = 0;
+      break;
+    default:
+      break;
+    }
+
+  if (data_type_ptr)
+    {
+      *data_type_ptr = sql_type;
+    }
+  if (parameter_size_ptr)
+    {
+      *parameter_size_ptr = col_size;
+    }
+  if (decimal_digits_ptr)
+    {
+      *decimal_digits_ptr = dec_digits;
+    }
+  if (nullable_ptr)
+    {
+      *nullable_ptr = SQL_NULLABLE_UNKNOWN;
+    }
+
+  return ODBC_SUCCESS;
+}
+
+/************************************************************************
 * name: odbc_prepare
 * arguments:
 * returns/side-effects:
