@@ -211,38 +211,6 @@ SQLBindParameter (SQLHSTMT StatementHandle,
 
   odbc_free_diag (stmt_handle->diag, RESET);
 
-  /* 테스트/호환: SQLDescribeParam이 메타를 주지 않아 앱이 VARCHAR로 바인딩하는데
-   * ValueType만 SQL_C_DATE 등인 경우 IPD가 VARCHAR로 남아 CCI에서 Type conversion
-   * (-20008)이 난다. C 타입에 맞춰 SQL 파라미터 타입을 맞춘다. */
-  if (ParameterType == SQL_CHAR || ParameterType == SQL_VARCHAR || ParameterType == SQL_LONGVARCHAR
-      || ParameterType == SQL_WCHAR || ParameterType == SQL_WVARCHAR || ParameterType == SQL_WLONGVARCHAR)
-    {
-      if (ValueType == SQL_C_DATE || ValueType == SQL_C_TYPE_DATE)
-	{
-	  ParameterType = SQL_TYPE_DATE;
-	  if (ColumnSize == 0)
-	    {
-	      ColumnSize = 10;
-	    }
-	}
-      else if (ValueType == SQL_C_TIME || ValueType == SQL_C_TYPE_TIME)
-	{
-	  ParameterType = SQL_TYPE_TIME;
-	  if (ColumnSize == 0)
-	    {
-	      ColumnSize = 8;
-	    }
-	}
-      else if (ValueType == SQL_C_TIMESTAMP || ValueType == SQL_C_TYPE_TIMESTAMP)
-	{
-	  ParameterType = SQL_TYPE_TIMESTAMP;
-	  if (ColumnSize == 0)
-	    {
-	      ColumnSize = 26;
-	    }
-	}
-    }
-
   rc = odbc_bind_parameter (stmt_handle, ParameterNumber,
 			    InputOutputType, ValueType,
 			    ParameterType, ColumnSize,
