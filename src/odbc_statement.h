@@ -231,6 +231,12 @@ PUBLIC RETCODE odbc_bind_parameter (ODBC_STATEMENT *stmt,
 				    SQLLEN *strlen_ind_ptr);
 PUBLIC RETCODE odbc_num_params (ODBC_STATEMENT *stmt,
 				short *parameter_count);
+PUBLIC RETCODE odbc_describe_param (ODBC_STATEMENT *stmt,
+				    SQLUSMALLINT parameter_number,
+				    SQLSMALLINT *data_type_ptr,
+				    SQLULEN *parameter_size_ptr,
+				    SQLSMALLINT *decimal_digits_ptr,
+				    SQLSMALLINT *nullable_ptr);
 PUBLIC RETCODE odbc_prepare (ODBC_STATEMENT *stmt, char *statement_text);
 PUBLIC RETCODE odbc_execute (ODBC_STATEMENT *stmt);
 PUBLIC RETCODE odbc_param_data (ODBC_STATEMENT *stmt, void **valueptr_ptr);
