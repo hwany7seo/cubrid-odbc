@@ -555,6 +555,7 @@ PRIVATE int sql_execute (int cci_connection, int *cci_request,
 PRIVATE void catalog_result_set_init (ODBC_STATEMENT *stmt, RESULT_TYPE task_type);
 PRIVATE void catalog_set_ird (ODBC_STATEMENT *stmt, ODBC_COL_INFO *colum_info, int column_num);
 PRIVATE void err_msg_table_not_exist (char *err_msg, const char *db_name, const char *table_name);
+PRIVATE char *odbc_double_apostrophe_for_cas (const char *src);
 
 PUBLIC RETCODE
 odbc_tables (ODBC_STATEMENT *stmt, char *catalog_name, char *schema_name, char *table_name, char *table_type)
@@ -671,8 +672,37 @@ odbc_columns (ODBC_STATEMENT *stmt, char *catalog_name, char *schema_name, char 
     {
       strcpy (qualified_tablename, table_name);
     }
-  cci_rc = cci_schema_info (stmt->conn->connhd, CCI_SCH_ATTRIBUTE,
-			    qualified_tablename, column_name, search_pattern_flag, &cci_err_buf);
+
+  /* CAS may embed arg1/arg2 in generated SQL. A single quote in the pattern must be
+   * doubled for CUBRID string literals; sending a bare ' provokes invalid '\' escapes. */
+  {
+    char *table_arg = qualified_tablename;
+    char *column_arg = column_name;
+    char *table_esc = NULL;
+    char *column_esc = NULL;
+
+    if (strchr (qualified_tablename, '\'') != NULL)
+      {
+	table_esc = odbc_double_apostrophe_for_cas (qualified_tablename);
+	if (table_esc != NULL)
+	  {
+	    table_arg = table_esc;
+	  }
+      }
+    if (column_name != NULL && strchr (column_name, '\'') != NULL)
+      {
+	column_esc = odbc_double_apostrophe_for_cas (column_name);
+	if (column_esc != NULL)
+	  {
+	    column_arg = column_esc;
+	  }
+      }
+
+    cci_rc = cci_schema_info (stmt->conn->connhd, CCI_SCH_ATTRIBUTE,
+			      table_arg, column_arg, search_pattern_flag, &cci_err_buf);
+    NC_FREE (table_esc);
+    NC_FREE (column_esc);
+  }
   ERROR_GOTO (cci_rc, cci_error);
 
   handle = cci_rc;
@@ -3963,6 +3993,43 @@ catalog_result_set_init (ODBC_STATEMENT *stmt, RESULT_TYPE task_type)
 
   ListCreate (&stmt->catalog_result.value);
   stmt->catalog_result.current = NULL;
+}
+
+/* Double each apostrophe for values CAS places inside SQL string literals. */
+PRIVATE char *
+odbc_double_apostrophe_for_cas (const char *src)
+{
+  size_t i, j, nquote;
+  char *dst;
+
+  if (src == NULL)
+    {
+      return NULL;
+    }
+  nquote = 0;
+  for (i = 0; src[i]; i++)
+    {
+      if (src[i] == '\'')
+	{
+	  nquote++;
+	}
+    }
+  dst = (char *) UT_ALLOC (strlen (src) + nquote + 1);
+  if (dst == NULL)
+    {
+      return NULL;
+    }
+  j = 0;
+  for (i = 0; src[i]; i++)
+    {
+      if (src[i] == '\'')
+	{
+	  dst[j++] = '\'';
+	}
+      dst[j++] = src[i];
+    }
+  dst[j] = '\0';
+  return dst;
 }
 
 PRIVATE void
