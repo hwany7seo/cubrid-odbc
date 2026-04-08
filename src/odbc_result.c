@@ -182,6 +182,24 @@ error:
   return ODBC_ERROR;
 }
 
+PRIVATE RETCODE
+get_ird_numeric_field (ODBC_DESC *ird, unsigned short column_number, unsigned short field_id, long *value_ptr)
+{
+  union
+  {
+    short s16;
+    long s64;
+  } raw;
+  SQLLEN field_size = 0;
+  RETCODE rc;
+
+  raw.s64 = 0;
+  rc = odbc_get_desc_field (ird, column_number, field_id, &raw, 0, &field_size);
+  *value_ptr = (field_size == sizeof (short)) ? (long) raw.s16 : raw.s64;
+
+  return rc;
+}
+
 /************************************************************************
 * name: odbc_col_attribute
 * arguments:
@@ -228,17 +246,17 @@ odbc_col_attribute (ODBC_STATEMENT *stmt,
     case SQL_DESC_UPDATABLE:
       if (field_identifier == SQL_COLUMN_LENGTH)
 	{
-	  rc = odbc_get_desc_field (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value, 0, NULL);
+	  rc = get_ird_numeric_field (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value);
 	}
       else
 	{
-	  rc = odbc_get_desc_field (ird, column_number, field_identifier, &temp_value, 0, NULL);
+	  rc = get_ird_numeric_field (ird, column_number, field_identifier, &temp_value);
 	}
 
-      * (long *) num_value_ptr = temp_value;
+      * (SQLLEN *) num_value_ptr = (SQLLEN) temp_value;
       if (string_length_ptr != NULL)
 	{
-	  *string_length_ptr = sizeof (long);
+	  *string_length_ptr = sizeof (SQLLEN);
 	}
       ERROR_GOTO (rc, error);
       break;
