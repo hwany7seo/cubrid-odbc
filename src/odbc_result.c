@@ -182,6 +182,30 @@ error:
   return ODBC_ERROR;
 }
 
+/* odbc_get_desc_field (IRD record fields) stores these as *(short *); callers that
+ * pass a zeroed SQLLEN/long must read via short first or negative SQL types break. */
+PRIVATE int
+colattribute_ird_numeric_uses_short (unsigned short field_id)
+{
+  switch (field_id)
+    {
+    case SQL_DESC_CONCISE_TYPE:
+    case SQL_DESC_TYPE:
+    case SQL_DESC_NULLABLE:
+    case SQL_DESC_PRECISION:
+    case SQL_COLUMN_PRECISION:
+    case SQL_DESC_SCALE:
+    case SQL_COLUMN_SCALE:
+    case SQL_DESC_SEARCHABLE:
+    case SQL_DESC_UNNAMED:
+    case SQL_DESC_UNSIGNED:
+    case SQL_DESC_UPDATABLE:
+      return 1;
+    default:
+      return 0;
+    }
+}
+
 /************************************************************************
 * name: odbc_col_attribute
 * arguments:
@@ -229,6 +253,13 @@ odbc_col_attribute (ODBC_STATEMENT *stmt,
       if (field_identifier == SQL_COLUMN_LENGTH)
 	{
 	  rc = odbc_get_desc_field (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value, 0, NULL);
+	}
+      else if (colattribute_ird_numeric_uses_short (field_identifier))
+	{
+	  short v16 = 0;
+
+	  rc = odbc_get_desc_field (ird, column_number, field_identifier, &v16, 0, NULL);
+	  temp_value = (long) v16;
 	}
       else
 	{

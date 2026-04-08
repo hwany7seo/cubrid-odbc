@@ -1415,6 +1415,17 @@ odbc_set_ird (ODBC_STATEMENT *stmt,
   ODBC_RECORD *record;
   short searchable;
 
+  if (type == SQL_VARCHAR && precision > 8000)
+    {
+      type = SQL_LONGVARCHAR;
+    }
+#ifdef CUBRID_ODBC_UNICODE
+  if (type == SQL_WVARCHAR && precision > 8000)
+    {
+      type = SQL_WLONGVARCHAR;
+    }
+#endif
+
   verbose_type = odbc_concise_to_verbose_type (type);
   display_size = odbc_display_size (type, precision);
   octet_length = odbc_octet_length (type, precision);

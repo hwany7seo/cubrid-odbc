@@ -936,7 +936,7 @@ odbc_type_by_cci (T_CCI_U_TYPE cci_type, int precision)
 	  return SQL_VARCHAR;
 	}
 #endif
-      if (precision > 8000)
+      if (precision > 8000 || precision >= MAX_CUBRID_CHAR_LEN)
 	{
 	  return SQL_LONGVARCHAR;
 	}
