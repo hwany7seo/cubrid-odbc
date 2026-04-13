@@ -49,9 +49,14 @@
 #define     SQL_C_UNI_SET     SQL_UNI_SET
 #define     SQL_BLOB                (SQL_BIT-100)
 #define     SQL_CLOB                (SQL_BIT-101)
+#define     SQL_JSON                (SQL_BIT-102)
+#define     SQL_ENUM                (SQL_BIT-103)
 
 #define   IS_STRING_TYPE(value)   ( (value) == SQL_CHAR || (value) == SQL_VARCHAR || \
-                      (value) == SQL_LONGVARCHAR )
+                      (value) == SQL_LONGVARCHAR || \
+                      (value) == SQL_WCHAR || (value) == SQL_WVARCHAR || \
+                      (value) == SQL_WLONGVARCHAR || \
+                      (value) == SQL_JSON || (value) == SQL_ENUM )
 #define   IS_BINARY_TYPE(value)   ((value) == SQL_BINARY || (value) == SQL_VARBINARY || \
                       (value) == SQL_LONGVARBINARY )
 

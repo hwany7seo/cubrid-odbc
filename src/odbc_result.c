@@ -254,6 +254,28 @@ odbc_col_attribute (ODBC_STATEMENT *stmt,
 	{
 	  rc = odbc_get_desc_field (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value, 0, NULL);
 	}
+      else if (field_identifier == SQL_COLUMN_PRECISION || field_identifier == SQL_DESC_PRECISION)
+	{
+	  /* ODBC 2.x compatibility: SQL_COLUMN_PRECISION = "column size" for all types.
+	   * - String/Binary: precision short overflows for large sizes → use SQL_DESC_LENGTH.
+	   * - Date/Time: SQL_DESC_PRECISION is always 0 (fractional seconds), but
+	   *   SQL_COLUMN_PRECISION should return the display width (10, 8, 23, ...).
+	   *   SQL_DESC_LENGTH holds the display_size set by odbc_set_ird → use it.
+	   * - Numeric: precision short is safe, read directly. */
+	  short concise_type = 0;
+	  odbc_get_desc_field (ird, column_number, SQL_DESC_CONCISE_TYPE, &concise_type, 0, NULL);
+	  if (IS_STRING_TYPE (concise_type) || IS_BINARY_TYPE (concise_type)
+	      || odbc_is_valid_sql_date_type (concise_type))
+	    {
+	      rc = odbc_get_desc_field (ird, column_number, SQL_DESC_LENGTH, &temp_value, 0, NULL);
+	    }
+	  else
+	    {
+	      short v16 = 0;
+	      rc = odbc_get_desc_field (ird, column_number, SQL_DESC_PRECISION, &v16, 0, NULL);
+	      temp_value = (long) v16;
+	    }
+	}
       else if (colattribute_ird_numeric_uses_short (field_identifier))
 	{
 	  short v16 = 0;

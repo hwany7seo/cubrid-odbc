@@ -248,6 +248,64 @@ PRIVATE DATA_TYPE_INFO odbc_data_type_info_set[] =
   }
   ,
 
+  {
+    "BLOB", SQL_BLOB, SQL_BLOB,
+    0, MAX_CUBRID_CHAR_LEN, (MAX_CUBRID_CHAR_LEN / 8) + 1, MAX_CUBRID_CHAR_LEN,
+    0, -1, column_size_binary, -1, octet_len_binary, -1, display_size_binary
+  },
+
+  {
+    "CLOB", SQL_CLOB, SQL_CLOB,
+    0, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN,
+    0, -1, column_size_char, -1, octet_len_char, -1, display_size_char
+  },
+
+  /* DATETIME - TIMESTAMP with milliseconds */
+  {
+    "DATETIME", SQL_TYPE_TIMESTAMP, SQL_C_TYPE_TIMESTAMP,
+    0, 26, sizeof (SQL_TIMESTAMP_STRUCT), 26,
+    0, 26, NULL, sizeof (SQL_TIMESTAMP_STRUCT), NULL, 26, NULL
+  },
+
+  /* JSON - mapped to LONGVARCHAR */
+  {
+    "JSON", SQL_JSON, SQL_C_CHAR,
+    0, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN,
+    0, -1, column_size_char, -1, octet_len_char, -1, display_size_char
+  },
+
+  /* ENUM - mapped to VARCHAR */
+  {
+    "ENUM", SQL_ENUM, SQL_C_CHAR,
+    0, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN, MAX_CUBRID_CHAR_LEN,
+    0, -1, column_size_char, -1, octet_len_char, -1, display_size_char
+  },
+
+  /* Timezone types - all mapped to SQL_TYPE_TIMESTAMP */
+  {
+    "TIMESTAMPTZ", SQL_TYPE_TIMESTAMP, SQL_C_TYPE_TIMESTAMP,
+    0, 23, sizeof (SQL_TIMESTAMP_STRUCT), 35,
+    0, 23, NULL, sizeof (SQL_TIMESTAMP_STRUCT), NULL, 35, NULL
+  },
+
+  {
+    "TIMESTAMPLTZ", SQL_TYPE_TIMESTAMP, SQL_C_TYPE_TIMESTAMP,
+    0, 23, sizeof (SQL_TIMESTAMP_STRUCT), 35,
+    0, 23, NULL, sizeof (SQL_TIMESTAMP_STRUCT), NULL, 35, NULL
+  },
+
+  {
+    "DATETIMETZ", SQL_TYPE_TIMESTAMP, SQL_C_TYPE_TIMESTAMP,
+    0, 26, sizeof (SQL_TIMESTAMP_STRUCT), 38,
+    0, 26, NULL, sizeof (SQL_TIMESTAMP_STRUCT), NULL, 38, NULL
+  },
+
+  {
+    "DATETIMELTZ", SQL_TYPE_TIMESTAMP, SQL_C_TYPE_TIMESTAMP,
+    0, 26, sizeof (SQL_TIMESTAMP_STRUCT), 38,
+    0, 26, NULL, sizeof (SQL_TIMESTAMP_STRUCT), NULL, 38, NULL
+  },
+
 #if 0
   /* CUBRID types */
   {
@@ -978,6 +1036,27 @@ odbc_type_by_cci (T_CCI_U_TYPE cci_type, int precision)
       return SQL_BLOB;
     case CCI_U_TYPE_CLOB:
       return SQL_CLOB;
+    case CCI_U_TYPE_ENUM:
+      return SQL_ENUM;
+    case CCI_U_TYPE_JSON:
+      if (precision > 8000 || precision >= MAX_CUBRID_CHAR_LEN)
+	{
+	  return SQL_LONGVARCHAR;
+	}
+      return SQL_JSON;
+    /* Timezone types - all map to SQL_TYPE_TIMESTAMP */
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
+      return SQL_TYPE_TIMESTAMP;
+    /* Unsigned integer types (internal CCI use only, not user-creatable in DDL) */
+    case CCI_U_TYPE_USHORT:
+      return SQL_SMALLINT;
+    case CCI_U_TYPE_UINT:
+      return SQL_INTEGER;
+    case CCI_U_TYPE_UBIGINT:
+      return SQL_BIGINT;
     case CCI_U_TYPE_UNKNOWN:
     default:
       return -1;
@@ -2488,6 +2567,8 @@ display_size_decimal (int precision)
 PRIVATE int
 display_size_binary (int precision)
 {
+  /* Hex string representation length: each 4 bits = 1 hex digit, plus '0x' prefix.
+   * e.g. BIT(8) -> "0xAB" -> 4 chars, BIT(12) -> "0xABC" -> 5 chars */
   return (int) ceil ((double) precision / 4.0) + 2;
 }
 

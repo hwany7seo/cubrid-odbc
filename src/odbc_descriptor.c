@@ -1246,6 +1246,8 @@ odbc_set_desc_field (ODBC_DESC *desc,
 	    case SQL_VARBINARY:
 	    case SQL_BINARY:
 	    case SQL_LONGVARCHAR:
+	    case SQL_JSON:
+	    case SQL_ENUM:
 	    case SQL_C_DOUBLE:
 	    case SQL_C_DEFAULT:
 	    case SQL_TYPE_TIME:
@@ -1430,6 +1432,13 @@ odbc_set_ird (ODBC_STATEMENT *stmt,
   display_size = odbc_display_size (type, precision);
   octet_length = odbc_octet_length (type, precision);
 
+  /* BLOB/CLOB: octet_length from c_data_type_info_set returns sizeof(SQLCHAR)=1
+   * which is wrong. Override to MAX_CUBRID_CHAR_LEN like the native driver. */
+  if (type == SQL_BLOB || type == SQL_CLOB)
+    {
+      octet_length = display_size = (long) MAX_CUBRID_CHAR_LEN;
+    }
+
   if (IS_STRING_TYPE (type) || IS_BINARY_TYPE (type))
     {
 #ifdef CUBRID_ODBC_UNICODE
@@ -1504,10 +1513,21 @@ odbc_set_ird (ODBC_STATEMENT *stmt,
 
   if (type == SQL_NUMERIC)
     {
+      /* NUMERIC: SQL_DESC_LENGTH = number of digits (= precision) */
       odbc_set_desc_field (stmt->ird, column_number, SQL_DESC_LENGTH, (SQLPOINTER) precision, 0, 1);
+    }
+  else if (IS_BINARY_TYPE (type))
+    {
+      /* BINARY types (SQL_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY):
+       * CUBRID precision = number of bits.
+       * ODBC SQL_DESC_LENGTH = number of BYTES per spec.
+       * Use ceiling division: (bits + 7) / 8 */
+      long byte_length = (precision > 0) ? ((long) (precision + 7) / 8) : 0L;
+      odbc_set_desc_field (stmt->ird, column_number, SQL_DESC_LENGTH, (SQLPOINTER) byte_length, 0, 1);
     }
   else
     {
+      /* String, Date/Time, LOB types: SQL_DESC_LENGTH = display_size (character width) */
       odbc_set_desc_field (stmt->ird, column_number, SQL_DESC_LENGTH, (SQLPOINTER) display_size, 0, 1);
     }
   //odbc_set_desc_field(stmt->ird, column_number, SQL_DESC_LENGTH, (SQLPOINTER)display_size, 0, 1);
@@ -1817,6 +1837,11 @@ odbc_type_searchable (short type)
     case SQL_BINARY:
     case SQL_VARBINARY:
     case SQL_LONGVARCHAR:
+    case SQL_WCHAR:
+    case SQL_WVARCHAR:
+    case SQL_WLONGVARCHAR:
+    case SQL_JSON:
+    case SQL_ENUM:
       searchable = SQL_SEARCHABLE;
       break;
     case SQL_NUMERIC:
