@@ -2971,7 +2971,9 @@ odbc_get_info (ODBC_CONNECTION *conn,
     case SQL_FETCH_DIRECTION:
       if (info_value_ptr != NULL)
 	{
-	  * (unsigned long *) info_value_ptr = SQL_FD_FETCH_NEXT;
+	  * (unsigned long *) info_value_ptr =
+	    SQL_FD_FETCH_NEXT | SQL_FD_FETCH_FIRST | SQL_FD_FETCH_LAST | SQL_FD_FETCH_PRIOR
+	    | SQL_FD_FETCH_ABSOLUTE | SQL_FD_FETCH_RELATIVE | SQL_FD_FETCH_BOOKMARK;
 	}
 
       if (string_length_ptr != NULL)
