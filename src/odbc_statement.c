@@ -1236,9 +1236,11 @@ odbc_num_params (ODBC_STATEMENT *stmt, short *parameter_count)
 * arguments:
 * returns/side-effects:
 * description:
-*   CAS PARAMETER_INFO를 cci_get_param_info로 받아 SQLDescribeParam에 맞게 채운다.
+*   Retrieve CAS PARAMETER_INFO using cci_get_param_info 
+*   and populate it to match SQLDescribeParam.
 * NOTE:
-*   CAS/브로커가 기능을 지원하지 않거나 실패하면 기존 스텁과 같이 VARCHAR(255)로 폴백한다.
+*   If the CAS/broker does not support the feature or the operation fails, 
+*   it falls back to VARCHAR(255), as before.
 ************************************************************************/
 PUBLIC RETCODE
 odbc_describe_param (ODBC_STATEMENT *stmt, SQLUSMALLINT parameter_number,
@@ -1345,11 +1347,20 @@ odbc_describe_param (ODBC_STATEMENT *stmt, SQLUSMALLINT parameter_number,
     }
 
   sql_type = odbc_type_by_cci (cci_u_type, precision);
-  if (sql_type < 0)
+  if (sql_type == -1)
     {
       sql_type = SQL_VARCHAR;
       precision = 255;
       scale = 0;
+    }
+
+  if (sql_type == SQL_BLOB)
+    {
+      sql_type = SQL_LONGVARBINARY;
+    }
+  else if (sql_type == SQL_CLOB)
+    {
+      sql_type = SQL_LONGVARCHAR;
     }
 
   cci_param_info_free (pinfo);
