@@ -1631,6 +1631,8 @@ odbc_execute (ODBC_STATEMENT *stmt)
 	    }
 	  else
 	    {
+	      char converted_str_to_bit = 0;
+
 	      /*--
 	       * cci_bind_param()을 사용할 때 SQLBindParam()에 의한 value pointer
 	       * 를 바로 사용할 수 없다. 왜냐면 SQLBindParam()에 의한 value pointer
@@ -1655,9 +1657,33 @@ odbc_execute (ODBC_STATEMENT *stmt)
 		    }
 		}
 
+	      if (a_type == CCI_A_TYPE_STR && (u_type == CCI_U_TYPE_BIT || u_type == CCI_U_TYPE_VARBIT))
+		{
+		  char *str_value = (char *) cci_value;
+		  int bit_length = (int) strlen (str_value);
+		  T_CCI_BIT *bit_value = UT_ALLOC (sizeof (T_CCI_BIT));
+
+		  if (bit_value == NULL)
+		    {
+		      NA_FREE (cci_value);
+		      odbc_set_diag (stmt->diag, "HY001", 0, NULL);
+		      goto error;
+		    }
+		  bit_value->size = bit_length;
+		  bit_value->buf = UT_MAKE_BINARY (str_value, bit_length);
+		  NA_FREE (cci_value);
+		  cci_value = bit_value;
+		  a_type = CCI_A_TYPE_BIT;
+		  converted_str_to_bit = 1;
+		}
+
 	      cci_rc = cci_bind_param (stmt->stmthd, RevisedParamPos, a_type, cci_value, u_type, 0);
 	      ERROR_GOTO (cci_rc, cci_error);
 
+	      if (converted_str_to_bit)
+		{
+		  UT_FREE (((T_CCI_BIT *) cci_value)->buf);
+		}
 	      NA_FREE (cci_value);
 	    }
 	}
