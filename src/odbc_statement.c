@@ -1365,65 +1365,8 @@ odbc_describe_param (ODBC_STATEMENT *stmt, SQLUSMALLINT parameter_number,
 
   cci_param_info_free (pinfo);
 
-  col_size = (SQLULEN) precision;
-  dec_digits = scale;
-
-  switch (sql_type)
-    {
-    case SQL_TINYINT:
-      col_size = 3;
-      dec_digits = 0;
-      break;
-    case SQL_SMALLINT:
-      col_size = 5;
-      dec_digits = 0;
-      break;
-    case SQL_INTEGER:
-      col_size = 10;
-      dec_digits = 0;
-      break;
-    case SQL_BIGINT:
-      col_size = 19;
-      dec_digits = 0;
-      break;
-    case SQL_REAL:
-      col_size = 7;
-      dec_digits = 0;
-      break;
-    case SQL_FLOAT:
-    case SQL_DOUBLE:
-      col_size = 15;
-      dec_digits = 0;
-      break;
-    case SQL_TYPE_DATE:
-    case SQL_DATE:
-      col_size = 10;
-      dec_digits = 0;
-      break;
-    case SQL_TYPE_TIME:
-    case SQL_TIME:
-      col_size = 8;
-      dec_digits = 0;
-      break;
-    case SQL_TYPE_TIMESTAMP:
-    case SQL_TIMESTAMP:
-      if (col_size <= 0 || col_size > 100)
-	{
-	  col_size = 26;
-	}
-      break;
-    case SQL_CHAR:
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-      if (col_size == 0)
-	{
-	  col_size = 255;
-	}
-      dec_digits = 0;
-      break;
-    default:
-      break;
-    }
+  col_size = (SQLULEN) odbc_column_size (sql_type, precision);
+  dec_digits = (short) odbc_decimal_digits (sql_type, scale);
 
   if (data_type_ptr)
     {
