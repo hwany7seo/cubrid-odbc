@@ -1,1 +1,1 @@
-link2u
+CUBRID_Unicode
