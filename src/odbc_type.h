@@ -136,6 +136,7 @@ PUBLIC const char *odbc_type_name (short odbc_type);
 
 PUBLIC T_CCI_U_TYPE odbc_type_to_cci_u_type (short sql_type);
 PUBLIC T_CCI_A_TYPE odbc_type_to_cci_a_type (short c_type);
+PUBLIC T_CCI_BIT *odbc_make_cci_bit_from_bool (int is_true);
 PUBLIC void *odbc_value_to_cci (void *c_value, short c_type, long c_length,
 				short c_precision, short c_scale);
 PUBLIC void odbc_value_to_cci2 (void *sql_value_root, int index,

@@ -1035,6 +1035,7 @@ odbc_type_to_cci_u_type (short sql_type)
     case SQL_WLONGVARCHAR:
       return CCI_U_TYPE_STRING;
 
+    case SQL_BIT:
     case SQL_BINARY:
       return CCI_U_TYPE_BIT;
     case SQL_VARBINARY:
@@ -1106,6 +1107,34 @@ odbc_type_to_cci_u_type (short sql_type)
  *    SQL_C_TIMESTAMP |     T_CCI_DATE
  *
  ************************************************************************/
+/************************************************************************
+ * name: odbc_make_cci_bit_from_bool
+ * arguments: is_true - nonzero for a true/1 bit, 0 for false/0
+ * returns: newly allocated T_CCI_BIT (caller frees ->buf and the struct),
+ *          or NULL on allocation failure
+ * description:
+ *   Builds the 1-byte T_CCI_BIT used to store a boolean into a CUBRID BIT
+ *   column. CUBRID BIT(1) only accepts a byte whose bits after the leading
+ *   one are 0, so true is encoded in the most-significant bit (0x80) and
+ *   false as 0x00. Shared by odbc_value_to_cci (SQL_C_BIT) and the
+ *   character-to-BIT parameter conversion in odbc_execute so the encoding
+ *   lives in one place.
+ ************************************************************************/
+PUBLIC T_CCI_BIT *
+odbc_make_cci_bit_from_bool (int is_true)
+{
+  T_CCI_BIT *bit = UT_ALLOC (sizeof (T_CCI_BIT));
+  unsigned char b = is_true ? 0x80 : 0x00;
+
+  if (bit == NULL)
+    {
+      return NULL;
+    }
+  bit->size = 1;
+  bit->buf = UT_MAKE_BINARY ((char *) &b, 1);
+  return bit;
+}
+
 PUBLIC void *
 odbc_value_to_cci (void *c_value, short c_type, long c_length, short c_precision, short c_scale)
 {
@@ -1171,6 +1200,12 @@ odbc_value_to_cci (void *c_value, short c_type, long c_length, short c_precision
       value = UT_ALLOC (sizeof (T_CCI_BIT));
       ((T_CCI_BIT *) value)->size = c_length;
       ((T_CCI_BIT *) value)->buf = UT_MAKE_BINARY (c_value, c_length);
+      break;
+    case SQL_C_BIT:
+      /* SQL_C_BIT is a single byte holding 0 or 1 (ODBC boolean); CUBRID has
+       * no boolean type, so store it into a BIT column as a 1-bit bit-string
+       * (see odbc_make_cci_bit_from_bool). */
+      value = odbc_make_cci_bit_from_bool (*(unsigned char *) c_value != 0);
       break;
 
     /*---------------------------------------------------------------
