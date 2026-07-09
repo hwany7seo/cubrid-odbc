@@ -24,9 +24,27 @@ main (int argc, char *argv[])
   int failed_cases[MAX_TEST_CASES];
 
 
+  char *test_name = NULL;
+  int test_name_len = 0;
+  int failed_case_nums[MAX_TEST_CASES];
+
   if (argc != 2)
     {
       run_all = 0;
+    }
+  else
+    {
+      test_name = argv[1];
+      char *last_slash = strrchr (argv[1], '/');
+      if (last_slash != NULL)
+	{
+	  test_name = last_slash + 1;
+	}
+      test_name_len = strlen (test_name);
+      if (test_name_len > 2 && strcmp (test_name + test_name_len - 2, ".c") == 0)
+	{
+	  test_name_len -= 2;
+	}
     }
 
   if (find_dsn (dsn))
@@ -38,8 +56,7 @@ main (int argc, char *argv[])
   loaded_cases = load_linux_odbc_testcases ();
   for (i = 0; i < num_testcases; i++)
     {
-      name_len = strlen (odbc_testcases[i].name);
-      if (run_all && strncmp (odbc_testcases[i].name, argv[1], name_len) != 0)
+      if (run_all && (strlen (odbc_testcases[i].name) != test_name_len || strncmp (odbc_testcases[i].name, test_name, test_name_len) != 0))
 	{
 	  continue;
 	}
@@ -52,7 +69,9 @@ main (int argc, char *argv[])
 
 	  if (rc != SQL_SUCCESS)
 	    {
-	      failed_cases[failed_count++] = case_num;
+	      failed_cases[failed_count] = i;
+	      failed_case_nums[failed_count] = case_num;
+	      failed_count++;
 	    }
 
 	  case_num++;
@@ -69,7 +88,7 @@ main (int argc, char *argv[])
 
       for (j = 0; j < failed_count; j++)
 	{
-	  printf ("%d, %s\n", failed_cases[j], odbc_testcases[failed_cases[j] - 1].name);
+	  printf ("%d, %s\n", failed_case_nums[j], odbc_testcases[failed_cases[j]].name);
 	}
     }
   else
