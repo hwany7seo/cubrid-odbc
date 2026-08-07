@@ -27,3 +27,4 @@ linux_test/CMakeCache.txt
 linux_test/Makefile
 linux_test/cmake_install.cmake
 linux_test/odbc_test
+work/

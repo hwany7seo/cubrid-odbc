@@ -42,6 +42,8 @@ set(CUBRID_ODBC_TEST_SOURCES
   sql_specialcolumnsw.c
   sql_tablesw.c
   sql_bindparambit.c
+  sql_bindparambit_mysql.c
+  sql_bindparambit_oracle.c
   )
 
 set (CMAKE_CXX_FLAGS "-Wall")

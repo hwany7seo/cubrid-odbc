@@ -7,23 +7,31 @@
 
 /*
  * usage:
- *       sql_bindparambit dsn
+ *       sql_bindparambit_oracle           (ignores dsn.txt; connects to Oracle)
  *
- * Reproduces (with raw ODBC calls, no Go/database-sql layer in the way) the
- * failure seen in cubrid-driverlink-test/go-odbc/to_odbc/bind.go's Test 2:
- * binding a BIT column parameter as []byte{0x80} (ODBC SQL_C_BINARY) fails
- * on SQLExecute against CUBRID_Unicode:
+ * Oracle variant of sql_bindparambit.c. Drives the SAME parameter binding
+ * variants (SQL_C_BINARY / SQL_C_BIT / SQL_C_CHAR against SQL_BIT / SQL_BINARY
+ * / SQL_VARBINARY) against an Oracle 11g server via the Oracle Instant Client
+ * ODBC driver, so its behavior can be compared with CUBRID's.
  *
- *   note: Test 2 (BIT []byte B'1', B'1') failed: SQLExecute: ...
+ * Connection: uses the OracleODBC-11g DSN from ~/.odbc.ini for driver/server,
+ * plus UID/PWD supplied here (the Oracle ODBC driver does not store the
+ * password in the DSN).
  *
- * This testcase drives SQLPrepare/SQLBindParameter/SQLExecute directly
- * against a BIT column using a few different C-type/SQL-type pairings, to
- * isolate whether the failure is in cubrid-odbc's parameter binding for
- * SQL_BIT specifically, or in how the caller encodes the value. Each
- * variant is tried independently (a failure in one does not stop the
- * others) and prints SQLGetDiagRec output on failure so the exact
- * SQLSTATE/native error/message from the driver is visible.
+ * NOTE 1 - Oracle has NO BIT type. The closest fixed 1-byte binary type is
+ *   RAW(1), used here in place of CUBRID's BIT(8). Variants that target
+ *   SQL_BIT therefore exercise the driver's SQL_BIT->RAW handling and may
+ *   legitimately fail/behave differently; the per-variant OK/FAILED output is
+ *   the point of the test.
+ * NOTE 2 - Oracle 11g does not support "DROP TABLE IF EXISTS"; a plain
+ *   DROP TABLE is issued and its (possibly "table does not exist") error is
+ *   intentionally ignored.
+ * NOTE 3 - the Oracle Instant Client directory must be on LD_LIBRARY_PATH when
+ *   running odbc_test, so unixODBC can load libsqora and its dependencies:
+ *     export LD_LIBRARY_PATH=/home/hwanyseo/odbc/oracle/instantclient_23_8:$LD_LIBRARY_PATH
  */
+
+#define ORACLE_CONN_STR "DSN=OracleODBC-11g;UID=cubrid;PWD=zbqmflem;"
 
 static void
 print_diag (SQLSMALLINT handle_type, SQLHANDLE handle, const char *label)
@@ -43,12 +51,6 @@ print_diag (SQLSMALLINT handle_type, SQLHANDLE handle, const char *label)
     }
 }
 
-/*
- * Inserts one row (id, a_bit) into tbl_bindparambit_test using the given
- * C-type/SQL-type pairing for a_bit. Returns 1 if SQLExecute succeeded
- * (SQL_SUCCESS or SQL_SUCCESS_WITH_INFO), 0 otherwise. Never returns early
- * on failure -- prints diagnostics and moves on so all variants get tried.
- */
 static int
 try_bind_variant (SQLHDBC hDbc, int id, const char *variant_name,
 		   SQLSMALLINT c_type, SQLSMALLINT sql_type,
@@ -89,7 +91,6 @@ try_bind_variant (SQLHDBC hDbc, int id, const char *variant_name,
       return 0;
     }
 
-  /* ColumnSize=1: per the ODBC spec, SQL_BIT columns have a column size of 1. */
   retcode = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, c_type, sql_type,
 			      1, 0, value, value_len, &val_ind);
   if (retcode == SQL_ERROR)
@@ -112,30 +113,19 @@ try_bind_variant (SQLHDBC hDbc, int id, const char *variant_name,
   return ok;
 }
 
-/*
- * Reproduces the EXACT shape of go-odbc bind.go's Test 2 statement:
- *   INSERT INTO tbl_bind_test (id, a_bit, b_vbit, h_set, k_blob, l_clob)
- *     VALUES (2, ?, ?, NULL, NULL, NULL)
- * i.e. two BIT columns bound as parameters #1 and #2 in the SAME statement
- * (id is a literal, not a parameter, exactly like bind.go), both using
- * SQL_C_BINARY->SQL_BIT with the same 0x80 byte alexbrainman/odbc sends.
- * try_bind_variant() above only ever binds ONE BIT parameter per statement,
- * so if this fails where the single-param variant passed, the bug is
- * specific to binding more than one SQL_BIT parameter in one statement.
- */
 static int
 try_two_bit_params (SQLHDBC hDbc)
 {
   RETCODE retcode;
   SQLHSTMT hstmt = SQL_NULL_HSTMT;
   SQLCHAR *insert_sql = (SQLCHAR *) "INSERT INTO tbl_bindparambit_test2 (id, a_bit, b_vbit) VALUES (5, ?, ?)";
-  unsigned char byte_0x80_a = 0x80;
-  unsigned char byte_0x80_b = 0x80;
+  unsigned char byte_a = 0x80;
+  unsigned char byte_b = 0x80;
   SQLLEN ind_a = 1;
   SQLLEN ind_b = 1;
   int ok = 0;
 
-  printf ("  variant [two SQL_BIT params in one statement, both SQL_C_BINARY 0x80]:\n");
+  printf ("  variant [two RAW params in one statement, both SQL_C_BINARY]:\n");
 
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
   if (retcode == SQL_ERROR)
@@ -148,27 +138,27 @@ try_two_bit_params (SQLHDBC hDbc)
   if (retcode == SQL_ERROR)
     {
       printf ("      SQLPrepare failed\n");
-      print_diag (SQL_HANDLE_STMT, hstmt, "two-bit-params");
+      print_diag (SQL_HANDLE_STMT, hstmt, "two-raw-params");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
     }
 
-  retcode = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_BIT,
-			      1, 0, &byte_0x80_a, 1, &ind_a);
+  retcode = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_BINARY,
+			      1, 0, &byte_a, 1, &ind_a);
   if (retcode == SQL_ERROR)
     {
       printf ("      SQLBindParameter(a_bit, param#1) failed\n");
-      print_diag (SQL_HANDLE_STMT, hstmt, "two-bit-params");
+      print_diag (SQL_HANDLE_STMT, hstmt, "two-raw-params");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
     }
 
-  retcode = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_BIT,
-			      1, 0, &byte_0x80_b, 1, &ind_b);
+  retcode = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_BINARY,
+			      1, 0, &byte_b, 1, &ind_b);
   if (retcode == SQL_ERROR)
     {
       printf ("      SQLBindParameter(b_vbit, param#2) failed\n");
-      print_diag (SQL_HANDLE_STMT, hstmt, "two-bit-params");
+      print_diag (SQL_HANDLE_STMT, hstmt, "two-raw-params");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
     }
@@ -178,25 +168,13 @@ try_two_bit_params (SQLHDBC hDbc)
   printf ("      SQLExecute -> %s (retcode=%d)\n", ok ? "OK" : "FAILED", retcode);
   if (!ok)
     {
-      print_diag (SQL_HANDLE_STMT, hstmt, "two-bit-params");
+      print_diag (SQL_HANDLE_STMT, hstmt, "two-raw-params");
     }
 
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
   return ok;
 }
 
-/*
- * This is the real root-cause probe. go-odbc's param.go (ExtractParameters +
- * bindParam, see cubrid-driverlink-test/go-odbc/odbc/param.go:154 and 190)
- * calls SQLDescribeParam on every "?" placeholder BEFORE binding. If that
- * call succeeds (p.isDescribed = true), it uses *whatever SQL type
- * SQLDescribeParam reported* for the parameter -- NOT a hardcoded SQL_BIT --
- * when it then calls SQLBindParameter with ValueType=SQL_C_BINARY. So the
- * real question is not "does cubrid-odbc accept SQL_C_BINARY->SQL_BIT" (it
- * does, per the variants above) but "what does cubrid-odbc's
- * SQLDescribeParam report for a '?' bound to a BIT column, and does binding
- * SQL_C_BINARY against THAT reported type/size/decimal succeed?"
- */
 static int
 try_describe_then_bind (SQLHDBC hDbc)
 {
@@ -208,13 +186,13 @@ try_describe_then_bind (SQLHDBC hDbc)
   SQLULEN p1_size = 0, p2_size = 0;
   SQLSMALLINT p1_decimal = 0, p2_decimal = 0;
   SQLSMALLINT p1_nullable = 0, p2_nullable = 0;
-  unsigned char byte_0x80_a = 0x80;
-  unsigned char byte_0x80_b = 0x80;
+  unsigned char byte_a = 0x80;
+  unsigned char byte_b = 0x80;
   SQLLEN ind_a = 1;
   SQLLEN ind_b = 1;
   int ok = 0;
 
-  printf ("  variant [SQLDescribeParam-driven bind, mirroring go-odbc's actual code path]:\n");
+  printf ("  variant [SQLDescribeParam-driven bind, mirroring go-odbc's code path]:\n");
 
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
   if (retcode == SQL_ERROR)
@@ -238,8 +216,7 @@ try_describe_then_bind (SQLHDBC hDbc)
   retcode = SQLDescribeParam (hstmt, 1, &p1_sqltype, &p1_size, &p1_decimal, &p1_nullable);
   if (retcode == SQL_ERROR)
     {
-      printf ("      SQLDescribeParam(param#1) FAILED -- go-odbc would fall back to its\n");
-      printf ("      size-based guess (SQL_BINARY/SQL_LONGVARBINARY) in this case, not this bug.\n");
+      printf ("      SQLDescribeParam(param#1) FAILED / not supported\n");
       print_diag (SQL_HANDLE_STMT, hstmt, "describe-then-bind");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
@@ -258,23 +235,21 @@ try_describe_then_bind (SQLHDBC hDbc)
   printf ("      SQLDescribeParam(param#2) -> sqltype=%d size=%lu decimal=%d nullable=%d\n",
 	  (int) p2_sqltype, (unsigned long) p2_size, (int) p2_decimal, (int) p2_nullable);
 
-  /* Mirror go-odbc exactly: ValueType=SQL_C_BINARY always for []byte,
-   * ParameterType=whatever SQLDescribeParam reported, ColumnSize=len(data)=1. */
   retcode = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_BINARY, p1_sqltype,
-			      1, p1_decimal, &byte_0x80_a, 1, &ind_a);
+			      1, p1_decimal, &byte_a, 1, &ind_a);
   if (retcode == SQL_ERROR)
     {
-      printf ("      SQLBindParameter(param#1, using described sqltype=%d) FAILED\n", (int) p1_sqltype);
+      printf ("      SQLBindParameter(param#1, described sqltype=%d) FAILED\n", (int) p1_sqltype);
       print_diag (SQL_HANDLE_STMT, hstmt, "describe-then-bind");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
     }
 
   retcode = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, SQL_C_BINARY, p2_sqltype,
-			      1, p2_decimal, &byte_0x80_b, 1, &ind_b);
+			      1, p2_decimal, &byte_b, 1, &ind_b);
   if (retcode == SQL_ERROR)
     {
-      printf ("      SQLBindParameter(param#2, using described sqltype=%d) FAILED\n", (int) p2_sqltype);
+      printf ("      SQLBindParameter(param#2, described sqltype=%d) FAILED\n", (int) p2_sqltype);
       print_diag (SQL_HANDLE_STMT, hstmt, "describe-then-bind");
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
       return 0;
@@ -308,17 +283,11 @@ print_hex (const unsigned char *p, SQLLEN n)
 }
 
 /*
- * Round-trip verification: INSERT `in` (in_len bytes, bound as SQL_C_BINARY ->
- * sql_type) into <table>.<col> at row `id`, then SELECT it back and compare the
- * retrieved bytes against `expect` (expect_len bytes). Prints VERIFIED or
- * MISMATCH with a hex dump. Returns 1 on match, 0 on any failure/mismatch.
- *
- * Expected results follow the CUBRID BIT semantics (manual 11.4, datatype):
- *   - BIT(n): value is left-justified and right zero-padded to n bits; a value
- *     longer than n bits is truncated. Bits fill MSB-first in 8-bit units, so a
- *     byte-aligned value round-trips verbatim when it matches the column width,
- *     and a shorter value is padded on the right with 0x00.
- *   - BIT VARYING(n): stored as-is (no padding); longer values truncated.
+ * Round-trip verification: INSERT `in` (in_len bytes, SQL_C_BINARY -> sql_type)
+ * into <table>.<col> at row `id`, SELECT it back and compare against `expect`.
+ * Oracle has no BIT type; RAW(n) stores the bytes verbatim (no bit-alignment or
+ * zero-padding), so the retrieved bytes equal the input bytes. Returns 1 on
+ * match, 0 otherwise.
  */
 static int
 verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
@@ -335,7 +304,6 @@ verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
   unsigned char got[256];
   int ok = 0;
 
-  /* INSERT (id, col) VALUES (?, ?) */
   rc = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
   if (rc == SQL_ERROR)
     {
@@ -345,19 +313,11 @@ verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
   snprintf (sql, sizeof (sql), "INSERT INTO %s (id, %s) VALUES (?, ?)", table, col);
   rc = SQLPrepare (hstmt, (SQLCHAR *) sql, SQL_NTS);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
-			     0, 0, &id, 0, &id_ind);
-    }
+    rc = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &id, 0, &id_ind);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, SQL_C_BINARY, sql_type,
-			     in_len, 0, (SQLPOINTER) in, in_len, &val_ind);
-    }
+    rc = SQLBindParameter (hstmt, 2, SQL_PARAM_INPUT, SQL_C_BINARY, sql_type, in_len, 0, (SQLPOINTER) in, in_len, &val_ind);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLExecute (hstmt);
-    }
+    rc = SQLExecute (hstmt);
   if (!SQL_SUCCEEDED (rc))
     {
       printf ("  [%s] in=", label);
@@ -369,7 +329,6 @@ verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
     }
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
 
-  /* SELECT col WHERE id = ?  and read the value back */
   rc = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
   if (rc == SQL_ERROR)
     {
@@ -379,18 +338,11 @@ verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
   snprintf (sql, sizeof (sql), "SELECT %s FROM %s WHERE id = ?", col, table);
   rc = SQLPrepare (hstmt, (SQLCHAR *) sql, SQL_NTS);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
-			     0, 0, &id, 0, &id_ind);
-    }
+    rc = SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &id, 0, &id_ind);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLExecute (hstmt);
-    }
+    rc = SQLExecute (hstmt);
   if (SQL_SUCCEEDED (rc))
-    {
-      rc = SQLFetch (hstmt);
-    }
+    rc = SQLFetch (hstmt);
   if (!SQL_SUCCEEDED (rc))
     {
       printf ("  [%s] SELECT/FETCH FAILED\n", label);
@@ -421,32 +373,43 @@ verify_bit_value (SQLHDBC hDbc, const char *table, const char *col, int id,
 }
 
 int
-sql_bindparambit (int case_num, char *dsn)
+sql_bindparambit_oracle (int case_num, char *dsn)
 {
   RETCODE retcode;
   SQLHENV hEnv;
   SQLHDBC hDbc;
   SQLHSTMT hstmt;
-  wchar_t *dsn_buf;
+  SQLCHAR conn_out[1024];
+  SQLSMALLINT conn_out_len;
   int verify_fail = 0;
-  unsigned char byte_val = 0xaa;	/* one binary byte */
-  unsigned char sql_c_bit_one = 1;	/* SQL_C_BIT expects a plain 0/1 byte, not ASCII */
+  unsigned char byte_val = 0xaa;
+  unsigned char sql_c_bit_one = 1;
   char ascii_digit_1 = '1';
   int pass_count = 0;
   int variant_count = 7;
 
-  retcode = SQLAllocEnv (&hEnv);
+  (void) dsn;			/* ignore dsn.txt; this test targets Oracle explicitly */
+
+  retcode = SQLAllocHandle (SQL_HANDLE_ENV, SQL_NULL_HANDLE, &hEnv);
   retcode = SQLSetEnvAttr (hEnv, SQL_ATTR_ODBC_VERSION, (void *) SQL_OV_ODBC3, 0);
-  retcode = SQLAllocConnect (hEnv, &hDbc);
+  retcode = SQLAllocHandle (SQL_HANDLE_DBC, hEnv, &hDbc);
   AreNotEqual (retcode, SQL_ERROR);
 
-  bytes_to_wide_char (dsn, strlen (dsn), &dsn_buf, 0, NULL, "UCS2");
-  retcode = SQLConnectW (hDbc, (SQLWCHAR *) dsn_buf, SQL_NTS, NULL, SQL_NTS, NULL, SQL_NTS);
+  retcode = SQLDriverConnect (hDbc, NULL, (SQLCHAR *) ORACLE_CONN_STR, SQL_NTS,
+			      conn_out, sizeof (conn_out), &conn_out_len, SQL_DRIVER_NOPROMPT);
+  if (retcode == SQL_ERROR)
+    {
+      printf ("  connect to Oracle (%s) FAILED\n", ORACLE_CONN_STR);
+      printf ("  (is the Instant Client dir on LD_LIBRARY_PATH?)\n");
+      print_diag (SQL_HANDLE_DBC, hDbc, "connect");
+    }
   AreNotEqual (retcode, SQL_ERROR);
 
+  /* Oracle has no BIT type; use RAW(1) as the 1-byte binary column. Oracle 11g
+   * has no DROP TABLE IF EXISTS, so ignore the plain-DROP error. */
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
-  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE IF EXISTS tbl_bindparambit_test", SQL_NTS);
-  retcode = SQLExecDirect (hstmt, (SQLCHAR *) "CREATE TABLE tbl_bindparambit_test (id INT, a_bit BIT(8))", SQL_NTS);
+  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bindparambit_test", SQL_NTS);
+  retcode = SQLExecDirect (hstmt, (SQLCHAR *) "CREATE TABLE tbl_bindparambit_test (id INT, a_bit RAW(8))", SQL_NTS);
   if (retcode == SQL_ERROR)
     {
       printf ("  setup: CREATE TABLE tbl_bindparambit_test failed\n");
@@ -455,8 +418,8 @@ sql_bindparambit (int case_num, char *dsn)
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
 
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
-  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE IF EXISTS tbl_bindparambit_test2", SQL_NTS);
-  retcode = SQLExecDirect (hstmt, (SQLCHAR *) "CREATE TABLE tbl_bindparambit_test2 (id INT, a_bit BIT(8), b_vbit BIT(8))", SQL_NTS);
+  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bindparambit_test2", SQL_NTS);
+  retcode = SQLExecDirect (hstmt, (SQLCHAR *) "CREATE TABLE tbl_bindparambit_test2 (id INT, a_bit RAW(8), b_vbit RAW(8))", SQL_NTS);
   if (retcode == SQL_ERROR)
     {
       printf ("  setup: CREATE TABLE tbl_bindparambit_test2 failed\n");
@@ -464,7 +427,7 @@ sql_bindparambit (int case_num, char *dsn)
     }
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
 
-  printf ("  -- CUBRID BIT(8) column parameter binding --\n");
+  printf ("  -- Oracle RAW column parameter binding (no native BIT type) --\n");
 
   /* Canonical variant matrix (identical across the CUBRID / MySQL / Oracle test
    * files so the per-combination OK/FAILED results can be compared directly). */
@@ -486,12 +449,9 @@ sql_bindparambit (int case_num, char *dsn)
   printf ("  bind-variant summary (single param per statement): %d/%d succeeded\n",
 	  pass_count, variant_count);
 
-  /* Now the exact multi-param shape bind.go's Test 2 actually uses. */
   pass_count += try_two_bit_params (hDbc);
   variant_count++;
 
-  /* And finally, the actual go-odbc code path: describe params first, then
-   * bind SQL_C_BINARY against whatever SQLDescribeParam reported. */
   pass_count += try_describe_then_bind (hDbc);
   variant_count++;
 
@@ -499,16 +459,15 @@ sql_bindparambit (int case_num, char *dsn)
 	  pass_count, variant_count);
 
   /* ------------------------------------------------------------------
-   * Round-trip VALUE verification: insert diverse bit values, read them
-   * back and assert the stored bytes match the CUBRID BIT semantics.
+   * Round-trip VALUE verification against Oracle RAW columns (byte-verbatim).
    * ------------------------------------------------------------------ */
-  printf ("  -- round-trip value verification (BIT / BIT VARYING) --\n");
+  printf ("  -- round-trip value verification (Oracle RAW, byte-verbatim) --\n");
 
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
-  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE IF EXISTS tbl_bit_verify", SQL_NTS);
+  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bit_verify", SQL_NTS);
   retcode = SQLExecDirect (hstmt,
 			   (SQLCHAR *) "CREATE TABLE tbl_bit_verify "
-			   "(id INT, b8 BIT(8), b16 BIT(16), vb BIT VARYING(16))", SQL_NTS);
+			   "(id INT, r1 RAW(1), r2 RAW(2), r4 RAW(4))", SQL_NTS);
   if (retcode == SQL_ERROR)
     {
       printf ("  setup: CREATE TABLE tbl_bit_verify failed\n");
@@ -517,42 +476,29 @@ sql_bindparambit (int case_num, char *dsn)
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
 
   {
-    /* BIT(8): a byte fills the column exactly, so it round-trips verbatim. */
     static const unsigned char v00[] = { 0x00 };
-    static const unsigned char v01[] = { 0x01 };
     static const unsigned char v55[] = { 0x55 };
-    static const unsigned char v80[] = { 0x80 };
     static const unsigned char vaa[] = { 0xaa };
     static const unsigned char vff[] = { 0xff };
-    /* BIT(16): two bytes fill exactly; one byte is right zero-padded to 16 bits. */
     static const unsigned char vaabb[] = { 0xaa, 0xbb };
-    static const unsigned char vaa00[] = { 0xaa, 0x00 };
-    /* BIT VARYING(16): stored as-is, no padding. */
-
+    static const unsigned char vdeadbeef[] = { 0xde, 0xad, 0xbe, 0xef };
     int n = 0;
 
-    n = 0;
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 1, "BIT(8) 0x00", SQL_BINARY, v00, 1, v00, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 2, "BIT(8) 0x01", SQL_BINARY, v01, 1, v01, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 3, "BIT(8) 0x55", SQL_BINARY, v55, 1, v55, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 4, "BIT(8) 0x80", SQL_BINARY, v80, 1, v80, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 5, "BIT(8) 0xaa", SQL_BINARY, vaa, 1, vaa, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b8", 6, "BIT(8) 0xff", SQL_BINARY, vff, 1, vff, 1);
-    /* BIT(16) exact fit and right-zero-pad of a short value. */
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b16", 10, "BIT(16) 0xaabb", SQL_BINARY, vaabb, 2, vaabb, 2);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "b16", 11, "BIT(16) 0xaa->0xaa00", SQL_BINARY, vaa, 1, vaa00, 2);
-    /* BIT VARYING(16): no padding, stored exactly. */
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "vb", 20, "VARBIT 0xaa", SQL_VARBINARY, vaa, 1, vaa, 1);
-    n += verify_bit_value (hDbc, "tbl_bit_verify", "vb", 21, "VARBIT 0xaabb", SQL_VARBINARY, vaabb, 2, vaabb, 2);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r1", 1, "RAW(1) 0x00", SQL_VARBINARY, v00, 1, v00, 1);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r1", 2, "RAW(1) 0x55", SQL_VARBINARY, v55, 1, v55, 1);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r1", 3, "RAW(1) 0xaa", SQL_VARBINARY, vaa, 1, vaa, 1);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r1", 4, "RAW(1) 0xff", SQL_VARBINARY, vff, 1, vff, 1);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r2", 10, "RAW(2) 0xaabb", SQL_VARBINARY, vaabb, 2, vaabb, 2);
+    n += verify_bit_value (hDbc, "tbl_bit_verify", "r4", 11, "RAW(4) 0xdeadbeef", SQL_VARBINARY, vdeadbeef, 4, vdeadbeef, 4);
 
-    printf ("  round-trip verification: %d/10 values verified\n", n);
-    verify_fail = 10 - n;
+    printf ("  round-trip verification: %d/6 values verified\n", n);
+    verify_fail = 6 - n;
   }
 
   retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
 //   SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bindparambit_test", SQL_NTS);
 //   SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bindparambit_test2", SQL_NTS);
-  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE IF EXISTS tbl_bit_verify", SQL_NTS);
+  SQLExecDirect (hstmt, (SQLCHAR *) "DROP TABLE tbl_bit_verify", SQL_NTS);
   SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
 
   retcode = SQLDisconnect (hDbc);
@@ -561,8 +507,5 @@ sql_bindparambit (int case_num, char *dsn)
   retcode = SQLFreeHandle (SQL_HANDLE_ENV, hEnv);
   AreNotEqual (retcode, SQL_ERROR);
 
-  /* The bind-variant probes above only surface driver behavior (OK/FAILED per
-   * combination). The round-trip section, however, is a real assertion: the
-   * testcase fails if any inserted bit value does not read back as expected. */
   return (verify_fail == 0) ? SQL_SUCCESS : 1;
 }
