@@ -157,8 +157,10 @@ odbc_describe_col (ODBC_STATEMENT *stmt,
     {
       if (*data_type_ptr == SQL_NUMERIC)
 	{
-	  odbc_get_desc_field (ird, column_number, SQL_DESC_PRECISION, column_size_ptr, 0, NULL);
-	  * (unsigned long *) column_size_ptr = * (unsigned short *) column_size_ptr;
+	  SQLLEN precision = 0;
+
+	  odbc_get_desc_field_num (ird, column_number, SQL_DESC_PRECISION, &precision);
+	  *column_size_ptr = (SQLULEN) precision;
 	}
       else
 	{
@@ -182,24 +184,6 @@ error:
   return ODBC_ERROR;
 }
 
-PRIVATE RETCODE
-get_ird_numeric_field (ODBC_DESC *ird, unsigned short column_number, unsigned short field_id, long *value_ptr)
-{
-  union
-  {
-    short s16;
-    long s64;
-  } raw;
-  SQLLEN field_size = 0;
-  RETCODE rc;
-
-  raw.s64 = 0;
-  rc = odbc_get_desc_field (ird, column_number, field_id, &raw, 0, &field_size);
-  *value_ptr = (field_size == sizeof (short)) ? (long) raw.s16 : raw.s64;
-
-  return rc;
-}
-
 /************************************************************************
 * name: odbc_col_attribute
 * arguments:
@@ -216,7 +200,7 @@ odbc_col_attribute (ODBC_STATEMENT *stmt,
   SQLLEN int_length;
   ODBC_DESC *ird;
   RETCODE rc;
-  long temp_value = 0;
+  SQLLEN temp_value = 0;
 
 
   ird = stmt->ird;
@@ -246,14 +230,14 @@ odbc_col_attribute (ODBC_STATEMENT *stmt,
     case SQL_DESC_UPDATABLE:
       if (field_identifier == SQL_COLUMN_LENGTH)
 	{
-	  rc = get_ird_numeric_field (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value);
+	  rc = odbc_get_desc_field_num (ird, column_number, SQL_DESC_DISPLAY_SIZE, &temp_value);
 	}
       else
 	{
-	  rc = get_ird_numeric_field (ird, column_number, field_identifier, &temp_value);
+	  rc = odbc_get_desc_field_num (ird, column_number, field_identifier, &temp_value);
 	}
 
-      * (SQLLEN *) num_value_ptr = (SQLLEN) temp_value;
+      * (SQLLEN *) num_value_ptr = temp_value;
       if (string_length_ptr != NULL)
 	{
 	  *string_length_ptr = sizeof (SQLLEN);

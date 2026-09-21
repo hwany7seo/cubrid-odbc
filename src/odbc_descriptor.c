@@ -928,6 +928,35 @@ error:
 }
 
 /************************************************************************
+* name: odbc_get_desc_field_num
+* arguments:
+* returns/side-effects:
+* description:
+*   Reads a numeric field and widens it to SQLLEN.
+* NOTE:
+*   For callers whose own contract is a single width (SQLColAttribute always
+*   answers in SQLLEN).  Reading a short field through a wider pointer leaves
+*   the upper bytes untouched, so SQL_LONGVARCHAR (-1) would arrive as 65535.
+************************************************************************/
+PUBLIC RETCODE
+odbc_get_desc_field_num (ODBC_DESC *desc, SQLSMALLINT rec_number, SQLSMALLINT field_id, SQLLEN *value_ptr)
+{
+  union
+  {
+    short s16;
+    long s64;
+  } raw;
+  SQLLEN field_size = 0;
+  RETCODE rc;
+
+  raw.s64 = 0;
+  rc = odbc_get_desc_field (desc, rec_number, field_id, &raw, 0, &field_size);
+  *value_ptr = (field_size == sizeof (short)) ? (SQLLEN) raw.s16 : (SQLLEN) raw.s64;
+
+  return rc;
+}
+
+/************************************************************************
 * name: odbc_get_desc_rec
 * arguments:
 * returns/side-effects:
