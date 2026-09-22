@@ -26,6 +26,7 @@ find_package(Git)
 set(CUBRID_ODBC_TEST_SOURCES
   test_util.c
   odbc_debug.c
+  sql_php_coltype.c
   sql_connectw.c
   sql_describecolw.c
   sql_foreignkeysw.c
