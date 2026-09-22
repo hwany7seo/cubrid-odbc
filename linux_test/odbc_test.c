@@ -27,15 +27,18 @@ static void show_usage (const char *progname);
 int
 main (int argc, char *argv[])
 {
-  int i, opt;
+  int i, j, opt;
   int name_count = 0;
   char **names = NULL;
+  int *name_matched = NULL;
   char *group = NULL;
+  int group_matched = FALSE;
   char *log = NULL;
   char dsn[PATHMAX] = "";
   char exec_dir[PATHMAX];
 
   int run_count = 0;
+  int unmatched_count = 0;
   int failed_count = 0;
   int failed_cases[MAX_TEST_CASES];
 
@@ -68,6 +71,16 @@ main (int argc, char *argv[])
 
   names = argv + optind;
   name_count = argc - optind;
+
+  if (name_count > 0)
+    {
+      name_matched = (int *) calloc (name_count, sizeof (int));
+      if (name_matched == NULL)
+	{
+	  fprintf (console, "error: out of memory\n");
+	  return 1;
+	}
+    }
 
   if (find_exec_dir (exec_dir))
     {
@@ -106,13 +119,15 @@ main (int argc, char *argv[])
   for (i = 0; i < num_testcases; i++)
     {
       int rc;
-      int j, matched;
+      int matched;
       long from, to;
 
       if (group != NULL && strcmp (odbc_testcases[i].group, group) != 0)
 	{
 	  continue;
 	}
+
+      group_matched = TRUE;
 
       if (name_count > 0)
 	{
@@ -121,6 +136,7 @@ main (int argc, char *argv[])
 	      if (strcmp (odbc_testcases[i].name, names[j]) == 0)
 		{
 		  matched = TRUE;
+		  name_matched[j] = TRUE;
 		  break;
 		}
 	    }
@@ -162,6 +178,29 @@ main (int argc, char *argv[])
       case_num++;
     }
 
+  /* a misspelled group or testcase would run nothing and look like a pass */
+  for (j = 0; j < name_count; j++)
+    {
+      if (name_matched[j] == FALSE)
+	{
+	  printf ("error: no testcase named %s\n", names[j]);
+	  fprintf (console, "error: no testcase named %s\n", names[j]);
+	  unmatched_count++;
+	}
+    }
+
+  if (group != NULL && group_matched == FALSE)
+    {
+      printf ("error: no testcase in the group %s\n", group);
+      fprintf (console, "error: no testcase in the group %s\n", group);
+    }
+
+  if (run_count == 0)
+    {
+      printf ("error: no testcase was run\n");
+      fprintf (console, "error: no testcase was run\n");
+    }
+
   if (verbose)
     {
       dump_log_file ();
@@ -174,8 +213,6 @@ main (int argc, char *argv[])
 
   if (failed_count > 0)
     {
-      int j;
-
       printf ("Failed testcases:\n");
       fprintf (console, "Failed testcases:\n");
 
@@ -187,7 +224,7 @@ main (int argc, char *argv[])
 	  fprintf (console, "  %s/%s\n", odbc_testcases[idx].group, odbc_testcases[idx].name);
 	}
     }
-  else
+  else if (run_count > 0 && unmatched_count == 0)
     {
       printf ("========== All testcases passed ==========\n");
       fprintf (console, "========== All testcases passed ==========\n");
@@ -202,8 +239,9 @@ main (int argc, char *argv[])
     }
 
   free (odbc_testcases);
+  free (name_matched);
 
-  return failed_count > 0 ? 1 : 0;
+  return (failed_count > 0 || unmatched_count > 0 || run_count == 0) ? 1 : 0;
 }
 
 /*
@@ -308,11 +346,16 @@ testcase_exists (char *casename)
 static int
 open_log_file (const char *dir)
 {
-  char path[PATHMAX * 2];
+  char path[PATHMAX];
 
   if (log_file[0] != '/')
     {
-      snprintf (path, sizeof (path), "%s/%s", dir, log_file);
+      if (snprintf (path, sizeof (path), "%s/%s", dir, log_file) >= (int) sizeof (path))
+	{
+	  fprintf (console, "error: the path of the log file is too long\n");
+	  return 1;
+	}
+
       snprintf (log_file, sizeof (log_file), "%s", path);
     }
 
