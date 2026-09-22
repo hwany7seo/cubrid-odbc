@@ -70,13 +70,13 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 if [ "$build_mode" = "debug" ]; then
-    cmake -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DCMAKE_BUILD_TYPE=Debug .. || exit 1
 else
-    cmake ..
+    cmake .. || exit 1
 fi
 
-make
-make package
+make || exit 1
+make package || exit 1
 
 if [ "x$DRIVER_INSTALL_DIR" != "x" ]; then
     cp -rfv $BUILD_DIR/libcascci.* "$DRIVER_INSTALL_DIR"

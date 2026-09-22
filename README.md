@@ -48,6 +48,18 @@ $ make package // Package
 ```
 For installation on Linux, please refer to REAME.txt file.
 
+## HOW TO TEST CUBRID ODBC Driver
+### For Linux
+#### Requirements
+- a CUBRID database server with demodb (a docker container of https://hub.docker.com/r/cubrid/cubrid can be used)
+```
+$ cd cubrid-odbc
+$ ./test.sh -s <database server>  // Build the driver and run every testcase of linux_test
+$ ./test.sh -h                    // Show the test options
+```
+The console shows the failed testcases only and the full log is written to linux_test/build/odbc_test.log.
+For the testcases, the docker container and the github action, please refer to linux_test/README file.
+
 GETTING HELP
 ============
 If You encounter any difficulties with getting started, or just have some
