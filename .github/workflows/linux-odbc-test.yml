@@ -17,9 +17,9 @@
 # Build the Linux ODBC driver and run linux_test against a CUBRID docker container.
 name: linux-odbc-test
 on:
-  push:
+  pull_request:
     branches:
-      - test_action
+      - develop
   workflow_dispatch:
     inputs:
       docker_image:
@@ -44,10 +44,6 @@ on:
         type: boolean
         required: false
         default: false
-  # TODO: enable it after the test is verified on the fork repository
-  # pull_request:
-  #   branches:
-  #     - develop
 
 env:
   DEFAULT_DOCKER_IMAGE: cubrid/cubrid:latest
@@ -165,7 +161,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| image | \`${{ steps.image.outputs.image }}\` |"
-            echo "| branch | \`${{ github.ref_name }}\` |"
+            echo "| branch | \`${{ github.head_ref || github.ref_name }}\` |"
             echo "| DSN | \`${RESOLVED_DSN:-$TEST_DSN}\` (link2u: Unicode driver, link2: ANSI driver) |"
             echo "| database | \`$TEST_DB_NAME\`, user \`$TEST_DB_USER\` |"
             echo ""

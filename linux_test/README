@@ -77,7 +77,7 @@ Unicode 드라이버(libcubrid-odbcw.so, DSN link2u)와 ANSI 드라이버(libcub
 
 7. github action
    - .github/workflows/linux-odbc-test.yml이 위와 같은 방법으로 테스트한다.
-   - test_action branch에 push되면 실행되고, Actions 화면에서 수동 실행(Run workflow)하면
+   - develop branch로 PR이 되면 실행되고, Actions 화면에서 수동 실행(Run workflow)하면
      branch, docker image(cubrid/cubrid의 tag 또는 전체 image 주소), 테스트할 DSN,
      테스트 group, 전체 로그 출력 여부를 선택할 수 있다.
    - 요약 결과는 job summary에 DSN별로 정리되고, 전체 로그는 linux-odbc-test-log
