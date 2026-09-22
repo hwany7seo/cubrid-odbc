@@ -143,7 +143,11 @@ AUTOCOMMIT = false
 OMIT_SCHEMA = no
 CHARSET = $TEST_DB_CHARSET
 END_OF_ODBC_INI
-cat $ODBC_INI_FILE
+
+# the password is kept in the file only, the printed config masks it so that it
+# does not end up in a terminal or in a CI log
+chmod 600 $ODBC_INI_FILE
+sed -E 's/^(PWD[[:space:]]*=[[:space:]]*)[^[:space:]].*$/\1********/' $ODBC_INI_FILE
 
 export ODBCSYSINI=$TEST_BUILD_DIR
 export ODBCINI=$ODBC_INI_FILE
