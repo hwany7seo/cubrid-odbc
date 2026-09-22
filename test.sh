@@ -143,7 +143,10 @@ AUTOCOMMIT = false
 OMIT_SCHEMA = no
 CHARSET = $TEST_DB_CHARSET
 END_OF_ODBC_INI
-cat $ODBC_INI_FILE
+
+
+chmod 600 $ODBC_INI_FILE
+sed -E 's/^(PWD[[:space:]]*=[[:space:]]*)[^[:space:]].*$/\1********/' $ODBC_INI_FILE
 
 export ODBCSYSINI=$TEST_BUILD_DIR
 export ODBCINI=$ODBC_INI_FILE
