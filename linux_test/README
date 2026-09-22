@@ -1,28 +1,88 @@
-1. build된 linux odbc를 $HOME/lib에 copy
-   $ mkdir $HOME/lib
-   $ cp libcubrid-odbc.so.11.4.0 $HOME/lib
-   $ cp libcubrid-odbcw.so.11.4.0 $HOME/lib
-   $ cp libcascci.so.11.2 $HOME/lib
-   $ cd $HOME/lib
-   $ ln -s libcubrid-odbc.so.11.4.0 libcubrid-odbc.so
-   $ ln -s libcubrid-odbcw.so.11.4.0 libcubrid-odbcw.so
-   $ ln -s libcascci.so.11.2 libcascci.so
+CUBRID Linux ODBC Test
+======================
 
-2. build ‘odbc_test’
-   $ cd ~/odbc_test
-   $ cmake CMakeLists.txt
-   $ make
+linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니저를 통해 테스트한다.
+Unicode 드라이버(libcubrid-odbcw.so, DSN link2u)와 ANSI 드라이버(libcubrid-odbc.so, DSN link2)를
+모두 demodb로 테스트한다.
 
-3. edit /usr/local/etc/odbcinst.ini $HOME/.odbc.ini
-  * 첨부된 odbc.ini, odbcinst.ini 참조
+1. 디렉토리 구성
+   linux_test/
+     odbc_test.c                    테스트 runner
+     test_util.c, odbc_debug.c      테스트 공통 코드
+     include/                       드라이버 헤더
+     testcases/<group>/sql_xxxx.c   테스트 케이스
+       default-spec/                ODBC 표준 spec 테스트
+       other-driver/                php-odbc, ruby-odbc 등 다른 driver 이슈 재현 테스트
+     odbc.ini, odbcinst.ini         수동 설정용 예시 파일
+     dsn.txt                        odbc_test를 직접 실행할 때 사용할 DSN 이름
+     build/                         빌드 결과, 생성된 odbc 설정 파일, 테스트 로그 (git 제외)
 
-4. edit dsn.txt
-  * dsn.txt에 테스트할 dsn의 이름을 입력한다.
+2. 테스트 케이스 추가
+   - testcases/<group>/sql_xxxx.c file 하나가 하나의 테스트 케이스이며
+     진입 함수의 이름은 file 이름과 같아야 한다.
+       int sql_xxxx (int case_num, char *dsn);
+   - file을 추가한 후 다시 build하면 cmake가 testcases/<group>/sql_*.c를 모두 찾아
+     libcubrid-odbc-test.so와 testcases.lst에 포함하므로 CMakeLists.txt 수정은 필요 없다.
+   - 성공하면 SQL_SUCCESS(0), 실패하면 0이 아닌 값을 return한다.
+     검증에는 test_util.h의 AreNotEqual, ReportEqual, ReportEqualStr macro를 사용한다.
+     ReportEqual, ReportEqualStr은 실패해도 계속 진행하므로 한 번의 실행으로
+     깨진 항목을 모두 확인할 수 있다.
 
-5. run test
-  * filename sql_xxxx.c로 된 file이 하나의 testcase이며
-  * build를 하면 libcubrid-odbc-test.so file을 만들고 
-  * ./odbc_test를 실행하면 sql_xxx로 된 모든 케이스를 실행함
-    $ export LD_LIBRARY_PATH=$HOME/lib:/usr/local/lib:$LD_LIBRARY_PATH
-    $ vi dsn.txt 
-    $ ./odbc_test
+3. test.sh로 실행 (권장)
+   $ cd cubrid-odbc
+   $ ./test.sh -s <db server>                       # 드라이버 build 후 전체 테스트
+   $ ./test.sh -t -s <db server>                    # build 없이 테스트만
+   $ ./test.sh -t -s 127.0.0.1 -g default-spec      # 특정 group만
+   $ ./test.sh -t -s 127.0.0.1 sql_tablesw          # 특정 테스트 케이스만
+   $ ./test.sh -t -s 127.0.0.1 -n link2u            # Unicode 드라이버만 테스트
+   $ ./test.sh -t -s 127.0.0.1 -n link2             # ANSI 드라이버만 테스트
+   $ ./test.sh -h                                   # 전체 option
+   - 기본값은 DSN "link2u link2"(Unicode, ANSI 드라이버를 차례로 테스트),
+     demodb, dba, 암호 없음, port 33000이며 -n, -b, -u, -w, -p option으로 바꿀 수 있다.
+   - DSN마다 따로 실행하고 로그도 DSN별로 남기며, 하나라도 실패하면 exit code 1을 return한다.
+   - test.sh가 linux_test/build에 odbcinst.ini와 odbc.ini를 만들고 ODBCSYSINI로 지정하므로
+     /usr/local/etc나 $HOME의 odbc 설정 file을 고칠 필요가 없다.
+
+4. 직접 build하고 실행
+   $ cd cubrid-odbc
+   $ ./build.sh -i $HOME/cubrid-odbc/lib             # 드라이버, unixODBC(build/external) build
+   $ cmake -S linux_test -B linux_test/build
+   $ cmake --build linux_test/build
+   $ export ODBCSYSINI=$PWD/linux_test/build         # odbcinst.ini, odbc.ini가 있는 directory
+   $ export ODBCINI=$ODBCSYSINI/odbc.ini
+   $ export LD_LIBRARY_PATH=$HOME/cubrid-odbc/lib:$PWD/build/external/lib:$LD_LIBRARY_PATH
+   $ linux_test/build/odbc_test -d link2u            # ANSI 드라이버는 -d link2
+   - odbc_test option: -d DSN, -g GROUP, -l LOG_FILE, -v, -h ('odbc_test -h' 참고)
+     -d를 주지 않으면 현재 directory의 dsn.txt를, 그것도 없으면 link2u를 사용한다.
+   - 시스템에 설치된 unixODBC를 사용하려면
+     cmake -S linux_test -B linux_test/build -DUNIXODBC_DIR=<unixODBC install directory>
+
+5. 결과 확인
+   - console에는 실패한 테스트와 실패한 검증 항목(NOK)만 출력한다.
+   - 전체 로그는 test.sh로 실행하면 linux_test/build/odbc_test_<dsn>.log에,
+     odbc_test를 직접 실행하면 -l option으로 지정한 file(기본 odbc_test.log)에 기록되며
+     -v option을 주면 console에도 출력한다.
+   - 모든 테스트가 통과하면 exit code 0, 하나라도 실패하면 1을 return한다.
+
+6. docker container로 테스트
+   테스트 케이스가 demodb의 DEMO 데이터(event, game 등)를 사용하므로 container의
+   entrypoint가 만드는 빈 database 대신 make_cubrid_demo.sh로 demodb를 만든다.
+
+   $ docker run -d --name cubrid-odbc-test -p 33000:33000 cubrid/cubrid:latest tail -f /dev/null
+   $ docker exec -u cubrid cubrid-odbc-test bash -lc 'cd $CUBRID_DATABASES && $CUBRID/demo/make_cubrid_demo.sh'
+   $ docker exec -u cubrid cubrid-odbc-test bash -lc 'cubrid server start demodb'
+   $ docker exec -u cubrid cubrid-odbc-test bash -lc 'cubrid broker start'
+   $ ./test.sh -s 127.0.0.1
+   $ docker rm -f cubrid-odbc-test
+
+7. github action
+   - .github/workflows/linux-odbc-test.yml이 위와 같은 방법으로 테스트한다.
+   - develop branch로 PR이 되면 실행되고, Actions 화면에서 수동 실행(Run workflow)하면
+     branch, docker image(cubrid/cubrid의 tag 또는 전체 image 주소), 테스트할 DSN,
+     테스트 group, 전체 로그 출력 여부를 선택할 수 있다.
+   - 요약 결과는 job summary에 DSN별로 정리되고, 전체 로그는 linux-odbc-test-log
+     artifact(odbc_test_link2u.log, odbc_test_link2.log)에 있다.
+   - 문서나 Windows 전용 file만 바뀐 PR에서는 실행하지 않으며(paths-ignore),
+     같은 PR에 새 commit이 올라오면 진행 중인 실행을 취소한다(concurrency).
+     paths-ignore로 skip된 PR은 이 check의 상태를 보고하지 않으므로, branch
+     protection의 required check로 지정할 때 주의해야 한다.
