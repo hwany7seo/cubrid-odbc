@@ -8,7 +8,6 @@ DRIVER_INSTALL_DIR=$HOME/cubrid-odbc/lib
 UNIXODBC_DIR=$SHELL_DIR/build/external
 ODBCINST_INI_FILE=$TEST_BUILD_DIR/odbcinst.ini
 ODBC_INI_FILE=$TEST_BUILD_DIR/odbc.ini
-TEST_LOG_FILE=$TEST_BUILD_DIR/odbc_test.log
 
 TEST_DB_SERVER=
 TEST_DB_PORT=33000
@@ -17,7 +16,7 @@ TEST_DB_USER=dba
 TEST_DB_PASSWORD=
 TEST_DB_CHARSET=ko_KR.utf8
 # link2 uses the ANSI driver, link2u uses the Unicode driver
-TEST_DSN=link2u
+TEST_DSN="link2u link2"
 TEST_GROUP=
 ONLY_TEST=0
 VERBOSE=0
@@ -33,7 +32,7 @@ function show_usage ()
   echo "  -b      Test database name (default: demodb)"
   echo "  -u      Test database user (default: dba)"
   echo "  -w      Test database password (default: \"\")"
-  echo "  -n      DSN to test, link2(ANSI) or link2u(Unicode) (default: link2u)"
+  echo "  -n      DSNs to test, link2(ANSI) and/or link2u(Unicode) (default: \"link2u link2\")"
   echo "  -g      Run the testcases of linux_test/testcases/GROUP only (default: all groups)"
   echo "  -v      Print the full test log, not only the failed testcases (default: false)"
   echo "  -? | -h Show this help message and exit"
@@ -45,6 +44,7 @@ function show_usage ()
   echo "  $0 -s 127.0.0.1                        # build the driver and run every testcase"
   echo "  $0 -t -s 127.0.0.1 -g default-spec     # run the testcases of testcases/default-spec"
   echo "  $0 -t -s 127.0.0.1 sql_tablesw         # run sql_tablesw only"
+  echo "  $0 -t -s 127.0.0.1 -n link2u           # test the Unicode driver only"
   echo ""
 }
 
@@ -59,7 +59,7 @@ function get_options ()
       b ) TEST_DB_NAME="$OPTARG" ;;
       u ) TEST_DB_USER="$OPTARG" ;;
       w ) TEST_DB_PASSWORD="$OPTARG" ;;
-      n ) TEST_DSN="$OPTARG" ;;
+      n ) TEST_DSN="$(echo $OPTARG | tr ',' ' ')" ;;
       g ) TEST_GROUP="$OPTARG" ;;
       v ) VERBOSE=1 ;;
       h|\?|* ) show_usage; exit 1;;
@@ -149,7 +149,7 @@ export ODBCSYSINI=$TEST_BUILD_DIR
 export ODBCINI=$ODBC_INI_FILE
 export LD_LIBRARY_PATH=$DRIVER_INSTALL_DIR:$UNIXODBC_DIR/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
-TEST_OPTIONS="-d $TEST_DSN -l $TEST_LOG_FILE"
+TEST_OPTIONS=
 if [ -n "$TEST_GROUP" ]; then
   TEST_OPTIONS="$TEST_OPTIONS -g $TEST_GROUP"
 fi
@@ -157,9 +157,23 @@ if [ $VERBOSE -eq 1 ]; then
   TEST_OPTIONS="$TEST_OPTIONS -v"
 fi
 
-echo "========== run the $TEST_DSN test =========="
-$TEST_BUILD_DIR/odbc_test $TEST_OPTIONS $TEST_CASES
-TEST_RESULT=$?
+# the Unicode driver and the ANSI driver are tested with their own DSN and log
+TEST_RESULT=0
+FAILED_DSN=
+
+for dsn in $TEST_DSN; do
+  echo "========== run the $dsn test =========="
+  $TEST_BUILD_DIR/odbc_test -d $dsn -l $TEST_BUILD_DIR/odbc_test_$dsn.log $TEST_OPTIONS $TEST_CASES
+
+  if [ $? -ne 0 ]; then
+    TEST_RESULT=1
+    FAILED_DSN="$FAILED_DSN $dsn"
+  fi
+done
+
+if [ -n "$FAILED_DSN" ]; then
+  echo "========== failed DSN:$FAILED_DSN =========="
+fi
 
 echo "========== test completed (exit code: $TEST_RESULT) =========="
 

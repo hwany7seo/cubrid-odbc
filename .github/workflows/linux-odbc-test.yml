@@ -30,6 +30,15 @@ on:
         description: 'Run the testcases of linux_test/testcases/<group> only (empty: all groups)'
         required: false
         default: ''
+      dsn:
+        description: 'DSN to test: link2u uses the Unicode driver and link2 uses the ANSI driver'
+        type: choice
+        required: false
+        default: 'link2u link2'
+        options:
+          - 'link2u link2'
+          - 'link2u'
+          - 'link2'
       verbose:
         description: 'Print the full test log in the job log, not only the failed testcases'
         type: boolean
@@ -48,10 +57,10 @@ env:
   TEST_DB_USER: dba
   TEST_DB_SERVER: 127.0.0.1
   TEST_DB_PORT: 33000
-  # the Unicode driver is tested through the link2u DSN
-  TEST_DSN: link2u
+  # link2u tests the Unicode driver and link2 tests the ANSI driver
+  TEST_DSN: link2u link2
   DRIVER_INSTALL_DIR: /home/runner/cubrid-odbc/lib
-  TEST_LOG_FILE: linux_test/build/odbc_test.log
+  TEST_LOG_DIR: linux_test/build
 
 jobs:
   linux-test:
@@ -130,8 +139,12 @@ jobs:
 
       - name: Run the Linux ODBC test
         run: |
+          dsn="${{ github.event.inputs.dsn }}"
+          dsn="${dsn:-$TEST_DSN}"
+          echo "RESOLVED_DSN=$dsn" >> $GITHUB_ENV
+
           options="-t -i $DRIVER_INSTALL_DIR -s $TEST_DB_SERVER -p $TEST_DB_PORT"
-          options="$options -b $TEST_DB_NAME -u $TEST_DB_USER -n $TEST_DSN"
+          options="$options -b $TEST_DB_NAME -u $TEST_DB_USER"
 
           if [ -n "${{ github.event.inputs.testcase_group }}" ]; then
             options="$options -g ${{ github.event.inputs.testcase_group }}"
@@ -141,7 +154,7 @@ jobs:
             options="$options -v"
           fi
 
-          ./test.sh $options
+          ./test.sh $options -n "$dsn"
 
       - name: Report the test result
         if: always()
@@ -153,25 +166,35 @@ jobs:
             echo "|---|---|"
             echo "| image | \`${{ steps.image.outputs.image }}\` |"
             echo "| branch | \`${{ github.ref_name }}\` |"
-            echo "| DSN | \`$TEST_DSN\` (Unicode driver) |"
+            echo "| DSN | \`${RESOLVED_DSN:-$TEST_DSN}\` (link2u: Unicode driver, link2: ANSI driver) |"
             echo "| database | \`$TEST_DB_NAME\`, user \`$TEST_DB_USER\` |"
             echo ""
 
-            if [ -f "$TEST_LOG_FILE" ]; then
+            logs=$(ls $TEST_LOG_DIR/odbc_test_*.log 2>/dev/null)
+
+            if [ -z "$logs" ]; then
+              echo "No test log is found, the test did not run."
+            fi
+
+            for log in $logs; do
+              dsn=$(basename $log .log)
+              dsn=${dsn#odbc_test_}
+
+              echo "### $dsn"
+              echo ""
               echo '```'
-              sed -n '/TEST SUMMARY/,$p' "$TEST_LOG_FILE"
+              sed -n '/TEST SUMMARY/,$p' "$log"
               echo '```'
               echo ""
-              echo "<details><summary>full log</summary>"
+              echo "<details><summary>full log of $dsn</summary>"
               echo ""
               echo '```'
-              cat "$TEST_LOG_FILE"
+              cat "$log"
               echo '```'
               echo ""
               echo "</details>"
-            else
-              echo "No test log is found, the test did not run."
-            fi
+              echo ""
+            done
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Upload the test log
@@ -179,7 +202,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-odbc-test-log
-          path: ${{ env.TEST_LOG_FILE }}
+          path: ${{ env.TEST_LOG_DIR }}/odbc_test_*.log
           if-no-files-found: warn
 
       - name: Show the container log and stop the container

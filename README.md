@@ -57,7 +57,9 @@ $ cd cubrid-odbc
 $ ./test.sh -s <database server>  // Build the driver and run every testcase of linux_test
 $ ./test.sh -h                    // Show the test options
 ```
-The console shows the failed testcases only and the full log is written to linux_test/build/odbc_test.log.
+Both the Unicode driver (DSN link2u) and the ANSI driver (DSN link2) are tested.
+The console shows the failed testcases only and the full log of each DSN is written to
+linux_test/build/odbc_test_<dsn>.log.
 For the testcases, the docker container and the github action, please refer to linux_test/README file.
 
 GETTING HELP

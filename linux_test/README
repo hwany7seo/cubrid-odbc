@@ -2,7 +2,8 @@ CUBRID Linux ODBC Test
 ======================
 
 linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니저를 통해 테스트한다.
-기본적으로 Unicode 드라이버(libcubrid-odbcw.so)를 demodb로 테스트한다.
+Unicode 드라이버(libcubrid-odbcw.so, DSN link2u)와 ANSI 드라이버(libcubrid-odbc.so, DSN link2)를
+모두 demodb로 테스트한다.
 
 1. 디렉토리 구성
    linux_test/
@@ -33,10 +34,12 @@ linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니�
    $ ./test.sh -t -s <db server>                    # build 없이 테스트만
    $ ./test.sh -t -s 127.0.0.1 -g default-spec      # 특정 group만
    $ ./test.sh -t -s 127.0.0.1 sql_tablesw          # 특정 테스트 케이스만
-   $ ./test.sh -t -s 127.0.0.1 -n link2             # ANSI 드라이버로 테스트
+   $ ./test.sh -t -s 127.0.0.1 -n link2u            # Unicode 드라이버만 테스트
+   $ ./test.sh -t -s 127.0.0.1 -n link2             # ANSI 드라이버만 테스트
    $ ./test.sh -h                                   # 전체 option
-   - 기본값은 DSN link2u(Unicode 드라이버), demodb, dba, 암호 없음, port 33000이며
-     -n, -b, -u, -w, -p option으로 바꿀 수 있다.
+   - 기본값은 DSN "link2u link2"(Unicode, ANSI 드라이버를 차례로 테스트),
+     demodb, dba, 암호 없음, port 33000이며 -n, -b, -u, -w, -p option으로 바꿀 수 있다.
+   - DSN마다 따로 실행하고 로그도 DSN별로 남기며, 하나라도 실패하면 exit code 1을 return한다.
    - test.sh가 linux_test/build에 odbcinst.ini와 odbc.ini를 만들고 ODBCSYSINI로 지정하므로
      /usr/local/etc나 $HOME의 odbc 설정 file을 고칠 필요가 없다.
 
@@ -48,7 +51,7 @@ linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니�
    $ export ODBCSYSINI=$PWD/linux_test/build         # odbcinst.ini, odbc.ini가 있는 directory
    $ export ODBCINI=$ODBCSYSINI/odbc.ini
    $ export LD_LIBRARY_PATH=$HOME/cubrid-odbc/lib:$PWD/build/external/lib:$LD_LIBRARY_PATH
-   $ linux_test/build/odbc_test -d link2u
+   $ linux_test/build/odbc_test -d link2u            # ANSI 드라이버는 -d link2
    - odbc_test option: -d DSN, -g GROUP, -l LOG_FILE, -v, -h ('odbc_test -h' 참고)
      -d를 주지 않으면 현재 directory의 dsn.txt를, 그것도 없으면 link2u를 사용한다.
    - 시스템에 설치된 unixODBC를 사용하려면
@@ -56,7 +59,9 @@ linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니�
 
 5. 결과 확인
    - console에는 실패한 테스트와 실패한 검증 항목(NOK)만 출력한다.
-   - 전체 로그는 linux_test/build/odbc_test.log에 기록되며 -v option을 주면 console에도 출력한다.
+   - 전체 로그는 test.sh로 실행하면 linux_test/build/odbc_test_<dsn>.log에,
+     odbc_test를 직접 실행하면 -l option으로 지정한 file(기본 odbc_test.log)에 기록되며
+     -v option을 주면 console에도 출력한다.
    - 모든 테스트가 통과하면 exit code 0, 하나라도 실패하면 1을 return한다.
 
 6. docker container로 테스트
@@ -73,6 +78,7 @@ linux_test는 build된 Linux ODBC 드라이버를 unixODBC 드라이버 매니�
 7. github action
    - .github/workflows/linux-odbc-test.yml이 위와 같은 방법으로 테스트한다.
    - test_action branch에 push되면 실행되고, Actions 화면에서 수동 실행(Run workflow)하면
-     branch, docker image(cubrid/cubrid의 tag 또는 전체 image 주소), 테스트 group,
-     전체 로그 출력 여부를 선택할 수 있다.
-   - 요약 결과는 job summary에, 전체 로그는 linux-odbc-test-log artifact에 있다.
+     branch, docker image(cubrid/cubrid의 tag 또는 전체 image 주소), 테스트할 DSN,
+     테스트 group, 전체 로그 출력 여부를 선택할 수 있다.
+   - 요약 결과는 job summary에 DSN별로 정리되고, 전체 로그는 linux-odbc-test-log
+     artifact(odbc_test_link2u.log, odbc_test_link2.log)에 있다.
