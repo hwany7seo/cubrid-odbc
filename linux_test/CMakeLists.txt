@@ -90,3 +90,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME} ${UNIXODBC_LIBRARY} pthread)
 ADD_EXECUTABLE (${TARGET} odbc_test.c)
 target_link_libraries(${TARGET} ${CMAKE_DL_LIBS})
 add_dependencies(${TARGET} ${CMAKE_PROJECT_NAME})
+

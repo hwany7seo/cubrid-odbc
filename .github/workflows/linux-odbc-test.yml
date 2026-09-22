@@ -17,9 +17,9 @@
 # Build the Linux ODBC driver and run linux_test against a CUBRID docker container.
 name: linux-odbc-test
 on:
-  pull_request:
+  push:
     branches:
-      - develop
+      - test_action
     # a pull request touching only these files cannot change the test result
     paths-ignore:
       - '**.md'
@@ -69,7 +69,6 @@ concurrency:
 env:
   DEFAULT_DOCKER_IMAGE: cubrid/cubrid:latest
   CUBRID_CONTAINER: cubrid-odbc-test
-  # the container uses demodb of the DEMO data, dba and no password
   TEST_DB_NAME: demodb
   TEST_DB_USER: dba
   TEST_DB_SERVER: 127.0.0.1
