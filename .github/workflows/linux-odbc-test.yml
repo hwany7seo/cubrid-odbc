@@ -20,6 +20,21 @@ on:
   pull_request:
     branches:
       - develop
+    # a pull request touching only these files cannot change the test result
+    paths-ignore:
+      - '**.md'
+      - '**.bat'
+      - 'README.txt'
+      - 'LICENSE'
+      - 'installer/**'
+      - 'project/**'
+      - 'script/**'
+      - 'UnitTest/**'
+      - 'UnitTest-CPP/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/workflows/check.yml'
+      - '.github/workflows/codestyle.sh'
+      - '.github/workflows/cppcheck-spr-list'
   workflow_dispatch:
     inputs:
       docker_image:
@@ -44,6 +59,12 @@ on:
         type: boolean
         required: false
         default: false
+
+# a new commit on a pull request cancels the run of the previous one, the
+# driver and unixODBC are built from scratch on every run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   DEFAULT_DOCKER_IMAGE: cubrid/cubrid:latest
