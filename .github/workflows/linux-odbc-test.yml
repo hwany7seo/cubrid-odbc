@@ -91,8 +91,14 @@ jobs:
 
       - name: Resolve the CUBRID docker image
         id: image
+        # every value that does not come from this file is read through the
+        # environment. A ${{ }} expression is substituted before bash runs the
+        # script, so inlining one would run the command substitution of a value
+        # like a branch named '$(...)'
+        env:
+          INPUT_DOCKER_IMAGE: ${{ github.event.inputs.docker_image }}
         run: |
-          image="${{ github.event.inputs.docker_image }}"
+          image="$INPUT_DOCKER_IMAGE"
 
           if [ -z "$image" ]; then
             image="$DEFAULT_DOCKER_IMAGE"
@@ -104,6 +110,14 @@ jobs:
             image="$image:latest"
           fi
 
+          # an image reference holds none of the characters a shell acts on
+          case "$image" in
+            *[!A-Za-z0-9._/:@-]*)
+              echo "invalid docker image: $image" >&2
+              exit 1
+              ;;
+          esac
+
           echo "image=$image" >> $GITHUB_OUTPUT
           echo "CUBRID docker image: $image"
 
@@ -113,10 +127,12 @@ jobs:
           sudo apt-get -yq install build-essential cmake libncurses-dev
 
       - name: Start the CUBRID container
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
         run: |
-          docker run -d --name $CUBRID_CONTAINER \
-            -p $TEST_DB_PORT:33000 \
-            ${{ steps.image.outputs.image }} tail -f /dev/null
+          docker run -d --name "$CUBRID_CONTAINER" \
+            -p "$TEST_DB_PORT:33000" \
+            "$IMAGE" tail -f /dev/null
 
           docker exec $CUBRID_CONTAINER cubrid_rel
 
@@ -154,34 +170,61 @@ jobs:
           ls -l $DRIVER_INSTALL_DIR
 
       - name: Run the Linux ODBC test
+        env:
+          INPUT_DSN: ${{ github.event.inputs.dsn }}
+          INPUT_TESTCASE_GROUP: ${{ github.event.inputs.testcase_group }}
+          INPUT_VERBOSE: ${{ github.event.inputs.verbose }}
         run: |
-          dsn="${{ github.event.inputs.dsn }}"
-          dsn="${dsn:-$TEST_DSN}"
+          dsn="${INPUT_DSN:-$TEST_DSN}"
+          group="$INPUT_TESTCASE_GROUP"
+
+          # a DSN names a section of odbc.ini and a log file, a group names a
+          # directory under linux_test/testcases
+          for name in $dsn; do
+            case "$name" in
+              *[!A-Za-z0-9_-]*)
+                echo "invalid DSN: $name" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          case "$group" in
+            *[!A-Za-z0-9._-]*)
+              echo "invalid testcase group: $group" >&2
+              exit 1
+              ;;
+          esac
+
           echo "RESOLVED_DSN=$dsn" >> $GITHUB_ENV
 
-          options="-t -i $DRIVER_INSTALL_DIR -s $TEST_DB_SERVER -p $TEST_DB_PORT"
-          options="$options -b $TEST_DB_NAME -u $TEST_DB_USER"
+          options=(-t -i "$DRIVER_INSTALL_DIR" -s "$TEST_DB_SERVER" -p "$TEST_DB_PORT")
+          options+=(-b "$TEST_DB_NAME" -u "$TEST_DB_USER" -n "$dsn")
 
-          if [ -n "${{ github.event.inputs.testcase_group }}" ]; then
-            options="$options -g ${{ github.event.inputs.testcase_group }}"
+          if [ -n "$group" ]; then
+            options+=(-g "$group")
           fi
 
-          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
-            options="$options -v"
+          if [ "$INPUT_VERBOSE" = "true" ]; then
+            options+=(-v)
           fi
 
-          ./test.sh $options -n "$dsn"
+          ./test.sh "${options[@]}"
 
       - name: Report the test result
         if: always()
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          # the branch of a pull request is named by its author
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           {
             echo "## CUBRID Linux ODBC test"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| image | \`${{ steps.image.outputs.image }}\` |"
-            echo "| branch | \`${{ github.head_ref || github.ref_name }}\` |"
+            echo "| image | \`$IMAGE\` |"
+            echo "| branch | \`$BRANCH\` |"
             echo "| DSN | \`${RESOLVED_DSN:-$TEST_DSN}\` (link2u: Unicode driver, link2: ANSI driver) |"
             echo "| database | \`$TEST_DB_NAME\`, user \`$TEST_DB_USER\` |"
             echo ""
@@ -223,8 +266,10 @@ jobs:
 
       - name: Show the container log and stop the container
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "${{ job.status }}" != "success" ]; then
+          if [ "$JOB_STATUS" != "success" ]; then
             docker logs $CUBRID_CONTAINER || true
             docker exec -u cubrid $CUBRID_CONTAINER \
               bash -lc 'tail -50 $CUBRID/log/broker/*.err $CUBRID/log/server/*.err' || true
