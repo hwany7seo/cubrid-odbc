@@ -1802,12 +1802,6 @@ is_odd_number (int num)
 PUBLIC int
 check_if_even_number (SQLUSMALLINT info_type, SQLSMALLINT buffer_length)
 {
-  if (buffer_length < 0)
-    {
-      /* ignore case */
-      return ODBC_SUCCESS;
-    }
-
   switch (info_type)
     {
     /* info_type that returns a string */
@@ -1847,7 +1841,7 @@ check_if_even_number (SQLUSMALLINT info_type, SQLSMALLINT buffer_length)
     case SQL_TABLE_TERM:
     case SQL_USER_NAME:
     case SQL_XOPEN_CLI_YEAR:
-      if (is_odd_number (buffer_length))
+      if (buffer_length < 0 || is_odd_number (buffer_length))
 	{
 	  return ODBC_ERROR;
 	}
@@ -1903,7 +1897,11 @@ decide_info_value_length (SQLUSMALLINT info_type, int buffer_length, int info_va
     case SQL_TABLE_TERM:
     case SQL_USER_NAME:
     case SQL_XOPEN_CLI_YEAR:
-      if (info_value_length > buffer_length - (int) sizeof (SQLWCHAR))
+      if (buffer_length < (int) sizeof (SQLWCHAR))
+	{
+	  info_value_length = 0;
+	}
+      else if (info_value_length > buffer_length - (int) sizeof (SQLWCHAR))
 	{
 	  info_value_length = buffer_length - (int) sizeof (SQLWCHAR);
 	}

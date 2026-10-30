@@ -233,13 +233,16 @@ SQLGetInfoW (SQLHDBC ConnectionHandle,
 		}
 	    }
 
-	  bytes_to_wide_char ((char *) InfoValue, (int) tmp_StringLength, (wchar_t **) &wvalue, 0, NULL, charset);
-
-	  if (wvalue != NULL)
+	  if (BufferLength >= (SQLSMALLINT) sizeof (SQLWCHAR))
 	    {
-	      (void) memcpy ((char *) InfoValue, (const char *) wvalue, *StringLength);
-	      ((SQLWCHAR *) InfoValue)[*StringLength / 2] = 0;
-	      UT_FREE_BSTR (wvalue);
+	      bytes_to_wide_char ((char *) InfoValue, (int) tmp_StringLength, (wchar_t **) &wvalue, 0, NULL, charset);
+
+	      if (wvalue != NULL)
+		{
+		  (void) memcpy ((char *) InfoValue, (const char *) wvalue, *StringLength);
+		  ((SQLWCHAR *) InfoValue)[*StringLength / 2] = 0;
+		  UT_FREE_BSTR (wvalue);
+		}
 	    }
 	}
       else
