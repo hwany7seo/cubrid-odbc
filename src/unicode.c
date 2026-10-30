@@ -180,6 +180,7 @@ SQLGetInfoW (SQLHDBC ConnectionHandle,
   SQLLEN tmp_StringLength;
   SQLLEN info_value_size;
   SQLWCHAR *wvalue;
+  int copy_size;
   char *charset = ((ODBC_CONNECTION *) ConnectionHandle)->charset;
 
   OutputDebugString ("SQLGetInfoW called\n");
@@ -221,11 +222,12 @@ SQLGetInfoW (SQLHDBC ConnectionHandle,
 
       if (InfoValue != NULL)
 	{
-	  *StringLength = (SQLSMALLINT) decide_info_value_length (InfoType, BufferLength, (int) info_value_size);
+	  copy_size = decide_info_value_length (InfoType, BufferLength, (int) info_value_size);
+	  *StringLength = (SQLSMALLINT) info_value_size;
 
 	  if (rc == SQL_SUCCESS)
 	    {
-	      if (*StringLength < info_value_size)
+	      if (copy_size < info_value_size)
 		{
 		  rc = SQL_SUCCESS_WITH_INFO;
 
@@ -239,8 +241,8 @@ SQLGetInfoW (SQLHDBC ConnectionHandle,
 
 	      if (wvalue != NULL)
 		{
-		  (void) memcpy ((char *) InfoValue, (const char *) wvalue, *StringLength);
-		  ((SQLWCHAR *) InfoValue)[*StringLength / 2] = 0;
+		  (void) memcpy ((char *) InfoValue, (const char *) wvalue, copy_size);
+		  ((SQLWCHAR *) InfoValue)[copy_size / 2] = 0;
 		  UT_FREE_BSTR (wvalue);
 		}
 	    }
