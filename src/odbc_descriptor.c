@@ -941,17 +941,31 @@ error:
 PUBLIC RETCODE
 odbc_get_desc_field_num (ODBC_DESC *desc, SQLSMALLINT rec_number, SQLSMALLINT field_id, SQLLEN *value_ptr)
 {
+  /* sl keeps the union SQLLEN-wide: SQL_DESC_LENGTH stores a SQLULEN, which is
+   * wider than long on Win64. */
   union
   {
     short s16;
-    long s64;
+    long s32;
+    SQLLEN sl;
   } raw;
   SQLLEN field_size = 0;
   RETCODE rc;
 
-  raw.s64 = 0;
+  raw.sl = 0;
   rc = odbc_get_desc_field (desc, rec_number, field_id, &raw, 0, &field_size);
-  *value_ptr = (field_size == sizeof (short)) ? (SQLLEN) raw.s16 : (SQLLEN) raw.s64;
+  if (field_size == sizeof (short))
+    {
+      *value_ptr = (SQLLEN) raw.s16;
+    }
+  else if (field_size == sizeof (long))
+    {
+      *value_ptr = (SQLLEN) raw.s32;
+    }
+  else
+    {
+      *value_ptr = raw.sl;
+    }
 
   return rc;
 }
