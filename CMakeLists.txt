@@ -28,6 +28,7 @@ set(CUBRID_ODBC_UNICODE "${CMAKE_PROJECT_NAME}w")
 set(WITH_EXTERNAL_PREFIX "EXTERNAL")
 set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")
 set(WITH_LIBUNIXODBC  ${WITH_EXTERNAL_PREFIX})
+set(LIBUNIXODBC_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/external")
 
 set(CUBRID_ODBC_SOURCES
   src/odbc_linux.c
@@ -151,11 +152,15 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --sysconfdir=/usr/local/etc
+      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${LIBUNIXODBC_INSTALL_DIR} --sysconfdir=/usr/local/etc
       BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
-    set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/libodbc-prefix/src/libodbc/include)
+    # the installed headers hold unixodbc_conf.h, which sqltypes.h includes,
+    # while ini.h is only found in the unixODBC sources
+    set(LIBUNIXODBC_INCLUDES
+      ${LIBUNIXODBC_INSTALL_DIR}/include
+      ${CMAKE_CURRENT_BINARY_DIR}/libodbc-prefix/src/libodbc/include)
   endif(UNIX)
 else(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     message(FATAL_ERROR "Invalid WITH_LIBUNIXODBC option value ${WITH_LIBUNIXODBC}")

@@ -7,48 +7,38 @@
 
 /*
  * usage:
- *       sql_execdirectw dsn
- *       sql_execdirectw dsn "Query with double quote"
+ *       sql_nativesqlw dsn
+ *       sql_nativesqlw dsn "Query with double quote"
  */
 
 int
-sql_execdirectw (int case_num, char *dsn)
+sql_nativesqlw (int case_num, char *dsn)
 {
   RETCODE retcode;
   SQLHENV           hEnv;
   SQLHDBC           hDbc;
-  SQLHSTMT  hstmt;
   wchar_t *dsn_buf;
-  SQLCHAR *qry = "SELECT * from db_user";
-  SQLWCHAR *query_buf;
-  int id, i = 1;
-
+  char *qry = "SELECT * from t1";
+  SQLWCHAR *query_buf, OutStatementText[1024];
+  SQLINTEGER TextLength2Ptr;
+  SQLCHAR *m_query;
   retcode = SQLAllocEnv (&hEnv);
   retcode = SQLSetEnvAttr (hEnv, SQL_ATTR_ODBC_VERSION, (void *)SQL_OV_ODBC3, 0);
   retcode = SQLAllocConnect (hEnv, &hDbc);
   AreNotEqual (retcode, SQL_ERROR);
 
   bytes_to_wide_char (dsn, SQL_NTS, &dsn_buf, 0, NULL, "UCS2");
-  retcode = SQLConnectW (hDbc, dsn_buf, SQL_NTS, NULL, SQL_NTS, NULL, SQL_NTS);
+  retcode = SQLConnectW (hDbc, (SQLWCHAR *) dsn_buf, SQL_NTS, NULL, SQL_NTS, NULL, SQL_NTS);
   AreNotEqual (retcode, SQL_ERROR);
 
-  retcode = SQLAllocHandle (SQL_HANDLE_STMT, hDbc, &hstmt);
-
-  retcode = bytes_to_wide_char (qry, strlen (qry), &query_buf, 0, NULL, "UCS2");
+  retcode = bytes_to_wide_char (qry, strlen (qry), (wchar_t **) &query_buf, 0, NULL, "UCS2");
   AreNotEqual (retcode, SQL_ERROR);
 
-  retcode = SQLExecDirectW (hstmt, query_buf, SQL_NTS);
+  retcode = SQLNativeSqlW (hDbc, query_buf, SQL_NTS, OutStatementText, sizeof (OutStatementText), &TextLength2Ptr);
   AreNotEqual (retcode, SQL_ERROR);
 
-  /*
-   * will print only 1st column of the table, it shoubd be type of INTEGER
-   */
-
-  while (SQLFetch (hstmt) == SQL_SUCCESS)
-    {
-      retcode = SQLGetData (hstmt, 1, SQL_C_LONG, &id, 0, NULL);
-      printf ("\t1st col [%d] = %d\n", i++, id);
-    }
+  wide_char_to_bytes ((wchar_t *) OutStatementText, SQL_NTS, (char **) &m_query, NULL, "UCS2");
+  printf ("\tconverted query (%d) = |%s|\n", TextLength2Ptr, m_query);
 
   retcode = SQLDisconnect (hDbc);
   AreNotEqual (retcode, SQL_ERROR);

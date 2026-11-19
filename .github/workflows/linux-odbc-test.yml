@@ -1,0 +1,273 @@
+#
+#
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
+# Build the Linux ODBC driver and run linux_test against a CUBRID docker container.
+name: linux-odbc-test
+on:
+  pull_request:
+    branches:
+      - develop
+    # a pull request touching only these files cannot change the test result
+    paths-ignore:
+      - '**.md'
+      - '**.bat'
+      - 'README.txt'
+      - 'LICENSE'
+      - 'installer/**'
+      - 'project/**'
+      - 'script/**'
+      - 'UnitTest/**'
+      - 'UnitTest-CPP/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/workflows/check.yml'
+      - '.github/workflows/codestyle.sh'
+      - '.github/workflows/cppcheck-spr-list'
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: 'CUBRID docker image: a tag of cubrid/cubrid (e.g. latest, 11.4) or a full image address (e.g. cubrid/cubrid:11.4)'
+        required: false
+        default: 'latest'
+      testcase_group:
+        description: 'Run the testcases of linux_test/testcases/<group> only (empty: all groups)'
+        required: false
+        default: ''
+      dsn:
+        description: 'DSN to test: link2u uses the Unicode driver and link2 uses the ANSI driver'
+        type: choice
+        required: false
+        default: 'link2u link2'
+        options:
+          - 'link2u link2'
+          - 'link2u'
+          - 'link2'
+      verbose:
+        description: 'Print the full test log in the job log, not only the failed testcases'
+        type: boolean
+        required: false
+        default: false
+
+# a new commit on a pull request cancels the run of the previous one, the
+# driver and unixODBC are built from scratch on every run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_DOCKER_IMAGE: cubrid/cubrid:latest
+  CUBRID_CONTAINER: cubrid-odbc-test
+  TEST_DB_NAME: demodb
+  TEST_DB_USER: dba
+  TEST_DB_SERVER: 127.0.0.1
+  TEST_DB_PORT: 33000
+  # link2u tests the Unicode driver and link2 tests the ANSI driver
+  TEST_DSN: link2u link2
+  DRIVER_INSTALL_DIR: /home/runner/cubrid-odbc/lib
+  TEST_LOG_DIR: linux_test/build
+
+jobs:
+  linux-test:
+    name: linux-test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # the driver version is built from the number of commits
+          fetch-depth: 0
+
+      - name: Resolve the CUBRID docker image
+        id: image
+        env:
+          INPUT_DOCKER_IMAGE: ${{ github.event.inputs.docker_image }}
+        run: |
+          image="$INPUT_DOCKER_IMAGE"
+
+          if [ -z "$image" ]; then
+            image="$DEFAULT_DOCKER_IMAGE"
+          elif [ "${image#*[/:]}" = "$image" ]; then
+            # neither an address nor a tag is given, so it is a tag of cubrid/cubrid
+            image="cubrid/cubrid:$image"
+          elif [ "${image#*:}" = "$image" ]; then
+            # an address without a tag
+            image="$image:latest"
+          fi
+
+          case "$image" in
+            *[!A-Za-z0-9._/:@-]*)
+              echo "invalid docker image: $image" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "image=$image" >> $GITHUB_OUTPUT
+          echo "CUBRID docker image: $image"
+
+      - name: Install packages
+        run: |
+          sudo apt-get -yq update
+          sudo apt-get -yq install build-essential cmake libncurses-dev
+
+      - name: Start the CUBRID container
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          docker run -d --name "$CUBRID_CONTAINER" \
+            -p "$TEST_DB_PORT:33000" \
+            "$IMAGE" tail -f /dev/null
+
+          docker exec $CUBRID_CONTAINER cubrid_rel
+
+          # the entrypoint creates an empty database, so demodb is created here
+          # with the DEMO data the testcases need (event, game, ...)
+          echo "========== create demodb =========="
+          docker exec -u cubrid $CUBRID_CONTAINER \
+            bash -lc "mkdir -p \$CUBRID_DATABASES/$TEST_DB_NAME \
+              && cd \$CUBRID_DATABASES/$TEST_DB_NAME \
+              && \$CUBRID/demo/make_cubrid_demo.sh"
+          docker exec -u cubrid $CUBRID_CONTAINER \
+            bash -lc 'cat $CUBRID_DATABASES/databases.txt'
+          docker exec -u cubrid $CUBRID_CONTAINER \
+            bash -lc "grep -qw '^$TEST_DB_NAME' \$CUBRID_DATABASES/databases.txt"
+
+          echo "========== start the server and the broker =========="
+          docker exec -u cubrid $CUBRID_CONTAINER bash -lc "cubrid server start $TEST_DB_NAME"
+          docker exec -u cubrid $CUBRID_CONTAINER bash -lc 'cubrid broker start'
+
+          echo "========== wait for the broker of $TEST_DB_SERVER:$TEST_DB_PORT =========="
+          for i in $(seq 1 60); do
+            if (echo > /dev/tcp/$TEST_DB_SERVER/$TEST_DB_PORT) 2>/dev/null; then
+              echo "the broker is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          docker exec -u cubrid $CUBRID_CONTAINER bash -lc 'cubrid service status'
+
+      - name: Build the ODBC driver
+        run: |
+          mkdir -p $DRIVER_INSTALL_DIR
+          ./build.sh -i $DRIVER_INSTALL_DIR
+          ls -l $DRIVER_INSTALL_DIR
+
+      - name: Run the Linux ODBC test
+        env:
+          INPUT_DSN: ${{ github.event.inputs.dsn }}
+          INPUT_TESTCASE_GROUP: ${{ github.event.inputs.testcase_group }}
+          INPUT_VERBOSE: ${{ github.event.inputs.verbose }}
+        run: |
+          dsn="${INPUT_DSN:-$TEST_DSN}"
+          group="$INPUT_TESTCASE_GROUP"
+
+          # a DSN names a section of odbc.ini and a log file, a group names a
+          # directory under linux_test/testcases
+          for name in $dsn; do
+            case "$name" in
+              *[!A-Za-z0-9_-]*)
+                echo "invalid DSN: $name" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          case "$group" in
+            *[!A-Za-z0-9._-]*)
+              echo "invalid testcase group: $group" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "RESOLVED_DSN=$dsn" >> $GITHUB_ENV
+
+          options=(-t -i "$DRIVER_INSTALL_DIR" -s "$TEST_DB_SERVER" -p "$TEST_DB_PORT")
+          options+=(-b "$TEST_DB_NAME" -u "$TEST_DB_USER" -n "$dsn")
+
+          if [ -n "$group" ]; then
+            options+=(-g "$group")
+          fi
+
+          if [ "$INPUT_VERBOSE" = "true" ]; then
+            options+=(-v)
+          fi
+
+          ./test.sh "${options[@]}"
+
+      - name: Report the test result
+        if: always()
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          # the branch of a pull request is named by its author
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          {
+            echo "## CUBRID Linux ODBC test"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| image | \`$IMAGE\` |"
+            echo "| branch | \`$BRANCH\` |"
+            echo "| DSN | \`${RESOLVED_DSN:-$TEST_DSN}\` (link2u: Unicode driver, link2: ANSI driver) |"
+            echo "| database | \`$TEST_DB_NAME\`, user \`$TEST_DB_USER\` |"
+            echo ""
+
+            logs=$(ls $TEST_LOG_DIR/odbc_test_*.log 2>/dev/null)
+
+            if [ -z "$logs" ]; then
+              echo "No test log is found, the test did not run."
+            fi
+
+            for log in $logs; do
+              dsn=$(basename $log .log)
+              dsn=${dsn#odbc_test_}
+
+              echo "### $dsn"
+              echo ""
+              echo '```'
+              sed -n '/TEST SUMMARY/,$p' "$log"
+              echo '```'
+              echo ""
+              echo "<details><summary>full log of $dsn</summary>"
+              echo ""
+              echo '```'
+              cat "$log"
+              echo '```'
+              echo ""
+              echo "</details>"
+              echo ""
+            done
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-odbc-test-log
+          path: ${{ env.TEST_LOG_DIR }}/odbc_test_*.log
+          if-no-files-found: warn
+
+      - name: Show the container log and stop the container
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" != "success" ]; then
+            docker logs $CUBRID_CONTAINER || true
+            docker exec -u cubrid $CUBRID_CONTAINER \
+              bash -lc 'tail -50 $CUBRID/log/broker/*.err $CUBRID/log/server/*.err' || true
+          fi
+
+          docker rm -f $CUBRID_CONTAINER || true
